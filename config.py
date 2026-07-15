@@ -21,9 +21,16 @@ import os
 # is expressed relative to it, so the app works no matter where it is copied.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DATA_DIR = os.path.join(BASE_DIR, "data")
-BACKUP_DIR = os.path.join(BASE_DIR, "backups")
-EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+# On Android (via Flet), BASE_DIR sits inside the read-only app bundle, so user
+# data must live somewhere writable instead. Flet pre-creates a writable,
+# per-app directory and exposes it through this environment variable; when set
+# (running as a packaged Flet app) data/backups/exports go there. The desktop
+# CustomTkinter app never sets this variable, so its behavior is unchanged.
+_STORAGE_ROOT = os.environ.get("FLET_APP_STORAGE_DATA") or BASE_DIR
+
+DATA_DIR = os.path.join(_STORAGE_ROOT, "data")
+BACKUP_DIR = os.path.join(_STORAGE_ROOT, "backups")
+EXPORT_DIR = os.path.join(_STORAGE_ROOT, "exports")
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 DB_PATH = os.path.join(DATA_DIR, "timetracker.db")

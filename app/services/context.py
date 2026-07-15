@@ -16,7 +16,6 @@ from app.database.connection import DatabaseManager
 from app.database.repositories.category_repo import CategoryRepository
 from app.database.repositories.entry_repo import EntryRepository
 from app.database.repositories.settings_repo import SettingsRepository
-from app.export.exporter import ExportService
 from app.services.backup_service import BackupService
 from app.services.calendar_service import CalendarService
 from app.services.category_service import CategoryService
@@ -58,7 +57,16 @@ class AppContext:
         self.calendar_service = CalendarService(self.category_repo, self.entry_repo)
         self.search_service = SearchService(self.entry_repo)
         self.backup_service = BackupService(self.db, self.settings_repo)
-        self.export_service = ExportService(self.entry_repo, self.category_repo)
+        # Built lazily (see the export_service property below) — it pulls in
+        # pandas, which desktop has but a packaged mobile build may not.
+        self._export_service = None
+
+    @property
+    def export_service(self):
+        if self._export_service is None:
+            from app.export.exporter import ExportService
+            self._export_service = ExportService(self.entry_repo, self.category_repo)
+        return self._export_service
 
     # ------------------------------------------------------------------ #
     # Small convenience pass-throughs for settings

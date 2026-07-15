@@ -10,6 +10,7 @@ something to work with.
 
 from __future__ import annotations
 
+import importlib.resources
 import os
 import sqlite3
 from typing import Optional
@@ -73,9 +74,17 @@ class DatabaseManager:
         self._seed_defaults()
 
     def _create_schema(self) -> None:
-        """Run schema.sql to create tables and indexes."""
-        with open(config.SCHEMA_PATH, "r", encoding="utf-8") as fh:
-            script = fh.read()
+        """Run schema.sql to create tables and indexes.
+
+        Loaded as a package resource (rather than a raw filesystem path) so it
+        resolves the same way whether running from source or bundled inside a
+        packaged app, where BASE_DIR-relative paths are not reliable.
+        """
+        script = (
+            importlib.resources.files("app.database")
+            .joinpath("schema.sql")
+            .read_text(encoding="utf-8")
+        )
         # executescript runs many statements separated by ';' in one go.
         self.conn.executescript(script)
         self.conn.commit()

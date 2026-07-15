@@ -9,6 +9,7 @@ timestamped file so you never clobber an older one.
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 from datetime import datetime
@@ -86,9 +87,19 @@ class ExportService:
         return (True, path)
 
     def to_csv(self) -> Tuple[bool, str]:
-        """Write the entries to a single .csv file (the most portable format)."""
+        """Write the entries to a single .csv file (the most portable format).
+
+        Plain stdlib csv — a flat list of dict rows needs nothing heavier, and
+        staying off pandas here means this path also works on a packaged
+        mobile build, which does not carry pandas.
+        """
         path = self._timestamped_path("csv")
-        pd.DataFrame(self._entry_rows()).to_csv(path, index=False)
+        rows = self._entry_rows()
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            if rows:
+                writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+                writer.writeheader()
+                writer.writerows(rows)
         return (True, path)
 
     def to_json(self) -> Tuple[bool, str]:

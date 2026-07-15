@@ -1,0 +1,20 @@
+[project]
+name = "timetracker-mobile"
+version = "0.1.0"
+description = "Personal Time Tracker & Productivity Dashboard — Android (Flet)"
+requires-python = ">=3.10"
+dependencies = [
+    "flet==0.86.0",
+    "flet-charts==0.86.0",
+]
+
+[tool.flet]
+product = "Time Tracker"
+org = "com.timetracker"
+bundle_id = "com.timetracker.app"
+
+[tool.flet.app]
+module = "mobile.main"
+
+[tool.flet.android]
+min_sdk_version = 24
