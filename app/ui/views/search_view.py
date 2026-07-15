@@ -55,8 +55,9 @@ class SearchView(BaseView):
 
         ctk.CTkButton(inner, text="Search", width=90,
                       command=self.refresh).pack(side="left", padx=8)
-        ctk.CTkButton(inner, text="Clear", width=70, fg_color="gray40",
-                      hover_color="gray30", command=self._clear).pack(side="left")
+        ctk.CTkButton(inner, text="Clear", width=70, fg_color=theme.NEUTRAL_BTN,
+                      hover_color=theme.NEUTRAL_BTN_HOVER, text_color=("gray10", "gray90"),
+                      command=self._clear).pack(side="left")
 
         self.count_label = ctk.CTkLabel(self, text="", text_color=theme.MUTED_TEXT)
         self.count_label.pack(anchor="w", padx=24)
@@ -116,8 +117,8 @@ class SearchView(BaseView):
             ctk.CTkLabel(meta, text=f" {entry.category_name}   {entry.notes}",
                          anchor="w", text_color=theme.MUTED_TEXT).pack(side="left")
 
-            ctk.CTkButton(row, text="✎  Edit", width=70, fg_color="gray40",
-                          hover_color="gray30",
+            ctk.CTkButton(row, text="✎  Edit", width=70, fg_color=theme.NEUTRAL_BTN,
+                          hover_color=theme.NEUTRAL_BTN_HOVER, text_color=("gray10", "gray90"),
                           command=lambda e=entry: self._edit(e)).pack(side="right", padx=10)
 
     def _edit(self, entry) -> None:
