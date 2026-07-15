@@ -14,7 +14,6 @@ from app.utils import time_utils
 from mobile import theme
 
 _WEEKDAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"]
-_CELL = 44
 
 
 def build(page: ft.Page, ctx) -> ft.Control:
@@ -23,7 +22,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
     state = {"year": today.year, "month": today.month}
 
     month_label = ft.Text("", size=16, weight=ft.FontWeight.BOLD, color=theme.HEADLINE)
-    grid_column = ft.Column(spacing=4)
+    grid_column = ft.Column(spacing=3)
 
     def _prev(e=None) -> None:
         state["month"] -= 1
@@ -78,18 +77,18 @@ def build(page: ft.Page, ctx) -> ft.Control:
         matrix = ctx.calendar_service.month_matrix(state["year"], state["month"])
 
         grid_column.controls.clear()
-        header_row = ft.Row(spacing=2, controls=[
-            ft.Container(width=_CELL, height=20, alignment=ft.Alignment.CENTER,
+        header_row = ft.Row(spacing=3, controls=[
+            ft.Container(expand=True, aspect_ratio=2.4, alignment=ft.Alignment.CENTER,
                         content=ft.Text(h, size=11, color=theme.MUTED_TEXT))
             for h in _WEEKDAY_HEADERS
         ])
         grid_column.controls.append(header_row)
 
         for week in matrix:
-            row = ft.Row(spacing=2)
+            row = ft.Row(spacing=3, controls=[])
             for day in week:
                 if day == 0:
-                    row.controls.append(ft.Container(width=_CELL, height=_CELL))
+                    row.controls.append(ft.Container(expand=True, aspect_ratio=1))
                     continue
                 date_str = f"{state['year']:04d}-{state['month']:02d}-{day:02d}"
                 status = status_map.get(date_str)
@@ -97,7 +96,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 is_today = date_str == today_str
                 row.controls.append(
                     ft.Container(
-                        width=_CELL, height=_CELL, border_radius=8, bgcolor=color,
+                        expand=True, aspect_ratio=1, border_radius=8, bgcolor=color,
                         border=ft.Border.all(3, theme.ACCENT) if is_today else None,
                         alignment=ft.Alignment.CENTER,
                         content=ft.Text(str(day), size=13, weight=ft.FontWeight.BOLD, color="#FFFFFF"),
@@ -120,7 +119,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
     )
 
     return ft.Column(
-        expand=True, scroll=ft.ScrollMode.AUTO, spacing=12,
+        expand=True, scroll=ft.ScrollMode.AUTO, spacing=8,
         controls=[
             theme.display("Calendar", size=28),
             nav, grid_column,

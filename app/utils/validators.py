@@ -51,6 +51,26 @@ def validate_target_minutes(text: str) -> Result:
     return OK
 
 
+def validate_target_count(text: str) -> Result:
+    """Check a positive whole-number target for a counter category."""
+    text = (text or "").strip()
+    if not text.isdigit() or int(text) < 1:
+        return (False, "Daily counter target must be a positive whole number.")
+    if int(text) > 999_999:
+        return (False, "Daily counter target is too large (max 999999).")
+    return OK
+
+
+def validate_unit_label(text: str) -> Result:
+    """Check the short unit displayed beside counter values."""
+    text = (text or "").strip()
+    if not text:
+        return (False, "Counter unit cannot be empty.")
+    if len(text) > 20:
+        return (False, "Counter unit is too long (max 20 characters).")
+    return OK
+
+
 def validate_entry(log_date: str, start: str, end: str) -> Result:
     """Check a full time entry before it is saved.
 

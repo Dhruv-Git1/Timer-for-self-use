@@ -37,6 +37,18 @@ class Series:
         return not self.values or all(v == 0 for v in self.values)
 
 
+@dataclass
+class CategoryAnalytics:
+    """Computed per-category numbers for the Insights screen — plain counting
+    and averaging only, no fitted/predictive model."""
+
+    consistency_pct: int                 # % of the last 30 days with any activity
+    momentum_pct: Optional[int]          # last-30-days total vs the 30 before (signed %)
+    avg_session_minutes: int             # average length of one session
+    session_count: int                   # number of sessions logged (last 90 days)
+    share_pct: int                       # this task's share of ALL tracked time (30d)
+
+
 class ChartDataProvider:
     """Builds the number series behind each chart from the live database."""
 
@@ -280,6 +292,79 @@ class ChartDataProvider:
         labels = [name for _lo, _hi, name in parts]
         values = [round(minutes / 60, 2) for minutes in buckets]
         return Series(labels=labels, values=values)
+
+    def category_session_length_distribution(
+        self, category_id: int, n_days: int = 90
+    ) -> Series:
+        """How this task's sessions break down by length over the last
+        ``n_days`` — do you do many short bursts or a few long stretches?
+        (A frequency histogram: bar height = number of sessions in each band.)"""
+        today = time_utils.today_str()
+        start = time_utils.add_days(today, -(n_days - 1))
+        entries = [
+            e for e in self.entries.list_by_date_range(start, today)
+            if e.category_id == category_id
+        ]
+        bands = [(0, 15, "<15m"), (15, 30, "15–30m"), (30, 60, "30–60m"),
+                 (60, 120, "1–2h"), (120, 10 ** 9, "2h+")]
+        counts = [0] * len(bands)
+        for entry in entries:
+            for i, (lo, hi, _name) in enumerate(bands):
+                if lo <= entry.duration_minutes < hi:
+                    counts[i] += 1
+                    break
+        labels = [name for _lo, _hi, name in bands]
+        return Series(labels=labels, values=[float(c) for c in counts])
+
+    def category_analytics(self, category_id: int) -> CategoryAnalytics:
+        """The "smart stats" row: consistency, momentum, average session
+        length, session count, and this task's share of all tracked time —
+        plain counting/averaging, nothing predictive.
+
+        Momentum is ``None`` when there is no prior-period baseline to compare
+        against (so the UI can show a dash instead of a divide-by-zero)."""
+        today = time_utils.today_str()
+        start_60 = time_utils.add_days(today, -59)
+        per_day = self.category_day_minutes(category_id, start_60, today)
+        days = sorted(per_day)
+        last30 = days[-30:]
+        prior30 = days[-60:-30]
+
+        last_total = sum(per_day[d] for d in last30)
+        prior_total = sum(per_day[d] for d in prior30)
+        active_last30 = sum(1 for d in last30 if per_day[d] > 0)
+        consistency = round(active_last30 / len(last30) * 100) if last30 else 0
+
+        momentum: Optional[int]
+        if prior_total > 0:
+            momentum = round((last_total - prior_total) / prior_total * 100)
+        else:
+            momentum = None
+
+        # Average session length + session count over a 90-day window.
+        start_90 = time_utils.add_days(today, -89)
+        sessions = [
+            e for e in self.entries.list_by_date_range(start_90, today)
+            if e.category_id == category_id
+        ]
+        avg_session = (
+            round(sum(e.duration_minutes for e in sessions) / len(sessions))
+            if sessions else 0
+        )
+
+        # Share of all tracked time in the same recent 30-day window.
+        distribution = self.category_distribution(30)
+        total_all_hours = sum(distribution.values)
+        this_hours = last_total / 60
+        share = round(this_hours / total_all_hours * 100) if total_all_hours > 0 else 0
+
+        return CategoryAnalytics(
+            consistency_pct=consistency,
+            momentum_pct=momentum,
+            avg_session_minutes=avg_session,
+            session_count=len(sessions),
+            share_pct=share,
+        )
 
     def category_weekday_pattern(self, category_id: int, n_weeks: int = 12) -> Series:
         """Average hours per weekday (Mon..Sun) for one category, last ``n_weeks``."""

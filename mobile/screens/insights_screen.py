@@ -60,15 +60,32 @@ def build(page: ft.Page, ctx) -> ft.Control:
         year = state["year"]
         year_label.value = str(year)
 
+        color = category.color
         y0, y1 = f"{year:04d}-01-01", f"{year:04d}-12-31"
+
+        # --- pull all the data for this task ---------------------------------
         day_minutes = data.category_year_heatmap(category.id, year)
         stats = data.category_summary_stats(category.id, y0, y1)
+        analytics = data.category_analytics(category.id)
         daily_series = data.category_daily_hours(category.id, n_days=30)
         monthly_series = data.category_monthly_hours(category.id, year)
         cumulative_series = data.category_cumulative_hours(category.id, year)
         weekday_series = data.category_weekday_pattern(category.id, n_weeks=12)
         time_of_day_series = data.category_time_of_day(category.id, n_days=90)
+        session_len_series = data.category_session_length_distribution(category.id, n_days=90)
+        distribution_series = data.category_distribution(30)
         best_subtitle = time_utils.fmt_short_date(stats.best_day_date) if stats.best_day_date else ""
+
+        # --- format the "smart stats" ---------------------------------------
+        if analytics.momentum_pct is None:
+            momentum_value = "—"
+        else:
+            arrow = "▲" if analytics.momentum_pct >= 0 else "▼"
+            momentum_value = f"{arrow} {abs(analytics.momentum_pct)}%"
+        avg_session_value = (
+            time_utils.fmt_duration(analytics.avg_session_minutes)
+            if analytics.avg_session_minutes else "—"
+        )
 
         def chart_card(chart: ft.Control) -> ft.Container:
             return ft.Container(
@@ -77,28 +94,52 @@ def build(page: ft.Page, ctx) -> ft.Control:
             )
 
         body.controls = [
+            # ---- Overview: regularity at a glance ----
             ft.Container(
                 bgcolor=theme.CARD, border_radius=12, padding=12,
                 border=ft.Border.all(1, theme.CARD_BORDER),
-                content=heatmap.build(day_minutes, year, category.color),
+                content=heatmap.build(day_minutes, year, color),
             ),
             ft.ResponsiveRow(controls=[
-                stat_card("Total", stats.total_label, accent=category.color),
-                stat_card("Active Days", str(stats.active_days), accent=category.color),
+                stat_card("Total", stats.total_label, accent=color),
+                stat_card("Active Days", str(stats.active_days), accent=color),
                 stat_card("Streak", str(stats.current_streak_days),
-                         "day" if stats.current_streak_days == 1 else "days", accent=category.color),
-                stat_card("Best Day", stats.best_day_label, best_subtitle, accent=category.color),
+                         "day" if stats.current_streak_days == 1 else "days", accent=color),
+                stat_card("Best Day", stats.best_day_label, best_subtitle, accent=color),
             ]),
+
+            # ---- Smart stats: plain counting/averaging, nothing predictive ----
+            theme.section_label("Smart Stats"),
+            ft.ResponsiveRow(controls=[
+                stat_card("Consistency", f"{analytics.consistency_pct}%",
+                          "of last 30 days", accent=color),
+                stat_card("Momentum", momentum_value, "vs prev 30 days", accent=color),
+                stat_card("Sessions", str(analytics.session_count), "last 90 days", accent=color),
+                stat_card("Avg Session", avg_session_value, "per session", accent=color),
+            ]),
+
+            # ---- Trends: how it's going ----
             theme.section_label("Daily hours (last 30 days)"),
-            chart_card(charts.line_chart(daily_series, category.color, height=190)),
+            chart_card(charts.line_chart(daily_series, color, height=190)),
             theme.section_label(f"Monthly hours ({year})"),
-            chart_card(charts.line_chart(monthly_series, category.color, height=190)),
+            chart_card(charts.line_chart(monthly_series, color, height=190)),
             theme.section_label(f"Cumulative hours ({year})"),
-            chart_card(charts.line_chart(cumulative_series, category.color, height=190)),
+            chart_card(charts.line_chart(cumulative_series, color, height=190)),
+
+            # ---- Patterns: when & how you do it ----
             theme.section_label("Weekday pattern (last 12 weeks)"),
-            chart_card(charts.bar_chart(weekday_series, category.color)),
+            chart_card(charts.bar_chart(weekday_series, color)),
             theme.section_label("Time of day (last 90 days)"),
-            chart_card(charts.bar_chart(time_of_day_series, category.color)),
+            chart_card(charts.bar_chart(time_of_day_series, color)),
+            theme.section_label("Session length (last 90 days)"),
+            chart_card(charts.bar_chart(session_len_series, color)),
+
+            # ---- Comparison: this task vs the others ----
+            theme.section_label("This task vs others (last 30 days)"),
+            theme.tracked(
+                f"{category.name} is {analytics.share_pct}% of your tracked time.",
+                size=12, color=theme.MUTED_TEXT, spacing=0.3),
+            chart_card(charts.bar_chart(distribution_series)),
         ]
         page.update()
 

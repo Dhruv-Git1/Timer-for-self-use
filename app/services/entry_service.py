@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Set, Tuple
 
+from app.database.repositories.category_repo import CategoryRepository
 from app.database.repositories.entry_repo import EntryRepository
 from app.models.time_entry import TimeEntry
 from app.utils import time_utils, validators
@@ -26,8 +27,21 @@ Outcome = Tuple[bool, str, Optional[int]]
 class EntryService:
     """Create, edit, delete, duplicate and analyse logged time entries."""
 
-    def __init__(self, entry_repo: EntryRepository) -> None:
+    def __init__(
+        self, entry_repo: EntryRepository, category_repo: Optional[CategoryRepository] = None
+    ) -> None:
         self.repo = entry_repo
+        self.categories = category_repo
+
+    def _validate_timer_category(self, category_id: int) -> Tuple[bool, str]:
+        if self.categories is None:
+            return (True, "")
+        category = self.categories.get(category_id)
+        if category is None or category.is_archived:
+            return (False, "Choose an active Timer category.")
+        if not category.is_timer:
+            return (False, "Time entries can only use Timer categories.")
+        return (True, "")
 
     # ------------------------------------------------------------------ #
     # Reads
@@ -57,6 +71,9 @@ class EntryService:
         ok, msg = validators.validate_entry(log_date, start_time, end_time)
         if not ok:
             return (False, msg, None)
+        ok, msg = self._validate_timer_category(category_id)
+        if not ok:
+            return (False, msg, None)
 
         start_ts, end_ts, duration, crosses = time_utils.build_timestamps(
             log_date, start_time, end_time
@@ -84,6 +101,9 @@ class EntryService:
         log_date, duration, crosses = time_utils.entry_fields_from_timestamps(
             start_ts, end_ts
         )
+        ok, msg = self._validate_timer_category(category_id)
+        if not ok:
+            return (False, msg, None)
         if duration <= 0:
             return (False, "Session too short to log.", None)
         if duration > time_utils.MINUTES_PER_DAY:
@@ -106,6 +126,9 @@ class EntryService:
     ) -> Outcome:
         """Validate and overwrite an existing entry, recomputing derived fields."""
         ok, msg = validators.validate_entry(log_date, start_time, end_time)
+        if not ok:
+            return (False, msg, None)
+        ok, msg = self._validate_timer_category(category_id)
         if not ok:
             return (False, msg, None)
 

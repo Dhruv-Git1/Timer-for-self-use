@@ -38,7 +38,18 @@ def build(page: ft.Page, ctx) -> ft.Control:
         _refresh()
 
     def _open_form(entry=None) -> None:
-        cats = ctx.category_service.list_categories()
+        cats = [
+            category for category in ctx.category_service.list_categories()
+            if category.is_timer
+        ]
+        if not cats:
+            page.show_dialog(ft.AlertDialog(
+                modal=True,
+                title=ft.Text("No Timer category"),
+                content=ft.Text("Create a Timer category before adding a time entry."),
+                actions=[ft.TextButton("OK", on_click=lambda e: page.pop_dialog())],
+            ))
+            return
         cat_dropdown = ft.Dropdown(
             value=str(entry.category_id if entry else cats[0].id),
             options=[ft.DropdownOption(key=str(c.id), text=c.name) for c in cats],
@@ -58,11 +69,19 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 page.update()
                 return
             if entry:
-                ctx.entry_service.update_entry(entry.id, category_id, state["date"],
-                                               start_field.value, end_field.value, notes_field.value)
+                ok, msg, _ = ctx.entry_service.update_entry(
+                    entry.id, category_id, state["date"], start_field.value,
+                    end_field.value, notes_field.value,
+                )
             else:
-                ctx.entry_service.add_entry(category_id, state["date"],
-                                            start_field.value, end_field.value, notes_field.value)
+                ok, msg, _ = ctx.entry_service.add_entry(
+                    category_id, state["date"], start_field.value,
+                    end_field.value, notes_field.value,
+                )
+            if not ok:
+                error_text.value = msg
+                page.update()
+                return
             page.pop_dialog()
             _refresh()
 

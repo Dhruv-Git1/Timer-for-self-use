@@ -30,6 +30,20 @@ CREATE TABLE IF NOT EXISTS categories (
     is_productive        INTEGER NOT NULL DEFAULT 1 CHECK (is_productive IN (0, 1)),
     -- Daily goal in minutes. 0 means "no goal set for this category".
     daily_target_minutes INTEGER NOT NULL DEFAULT 0 CHECK (daily_target_minutes >= 0),
+    -- How this category is recorded on Android: stopwatch, daily check-off,
+    -- or a whole-number counter. Existing/desktop categories remain timers.
+    tracking_mode        TEXT    NOT NULL DEFAULT 'timer'
+                                 CHECK (tracking_mode IN ('timer', 'checkoff', 'counter')),
+    -- Counter/check-off goal. Check-off always uses 1; timer categories ignore it.
+    daily_target_count   INTEGER NOT NULL DEFAULT 1 CHECK (daily_target_count >= 1),
+    -- Short label shown beside counter values, e.g. glasses, pages, fruits.
+    unit_label           TEXT    NOT NULL DEFAULT 'times',
+    -- Whether this goal contributes to Today's score at all.
+    include_in_daily_score INTEGER NOT NULL DEFAULT 1
+                                   CHECK (include_in_daily_score IN (0, 1)),
+    -- How much this category counts in Today's score relative to the others
+    -- (a weighted average, not a plain one). 1 = the original equal weighting.
+    score_weight         INTEGER NOT NULL DEFAULT 1 CHECK (score_weight >= 1),
     -- Controls display order in lists.
     sort_order           INTEGER NOT NULL DEFAULT 0,
     -- Soft delete: archived categories vanish from pickers but keep their
@@ -66,6 +80,20 @@ CREATE TABLE IF NOT EXISTS time_entries (
 CREATE INDEX IF NOT EXISTS idx_entries_log_date ON time_entries(log_date);
 CREATE INDEX IF NOT EXISTS idx_entries_category ON time_entries(category_id);
 CREATE INDEX IF NOT EXISTS idx_entries_start_ts ON time_entries(start_ts);
+
+-- --------------------------------------------------------------------------
+-- Daily progress: one current check-off/counter value per category and date.
+-- Timer progress remains derived from time_entries and is never duplicated here.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS daily_progress (
+    category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+    log_date    TEXT    NOT NULL,
+    value       INTEGER NOT NULL DEFAULT 0 CHECK (value >= 0),
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (category_id, log_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_progress_date ON daily_progress(log_date);
 
 -- --------------------------------------------------------------------------
 -- App metadata: a simple key/value store for settings that do not deserve

@@ -16,6 +16,34 @@ from app.charts.chart_data import Series
 from mobile import theme
 
 
+# A warm-only palette keeps every bar chart visually tied to the app's
+# crimson "get moving" identity.  The small tip variations distinguish
+# adjacent categories without falling back to unrelated blues and greens.
+_FIRE_TIPS = ("#FF4655", "#FF641F", "#FF7A1A", "#FFB020")
+_EMBER = "#5F0D14"
+_FLAME_EDGE = "#FFC06A"
+
+
+def _fire_gradient(index: int = 0) -> ft.LinearGradient:
+    return ft.LinearGradient(
+        begin=ft.Alignment.BOTTOM_CENTER,
+        end=ft.Alignment.TOP_CENTER,
+        colors=[_EMBER, theme.ACCENT_DEEP, theme.ACCENT, _FIRE_TIPS[index % len(_FIRE_TIPS)]],
+        stops=[0.0, 0.28, 0.72, 1.0],
+    )
+
+
+def _bar_width(item_count: int) -> int:
+    """Keep weekly bars bold while preventing dense monthly charts colliding."""
+    if item_count <= 7:
+        return 26
+    if item_count <= 12:
+        return 20
+    if item_count <= 20:
+        return 13
+    return 8
+
+
 def _thinned_labels(labels: List[str], max_shown: int = 8) -> Dict[int, str]:
     """Map label-index -> text, showing at most ``max_shown`` evenly spaced —
     the mobile equivalent of chart_factory._rotate_xticks's thinning."""
@@ -74,26 +102,39 @@ def line_chart(series: Series, color: str = theme.ACCENT, height: int = 220,
 
 
 def bar_chart(series: Series, color: str = theme.ACCENT, height: int = 200) -> ft.Control:
-    """Bars use a subtle top-to-bottom shade when they all share one accent
-    color (a single flat gradient reads as premium); per-category colors
-    (``series.colors``) stay flat, since a gradient on every one of several
-    hues at once would look busy rather than classic."""
+    """Render bold, fire-themed achievement bars.
+
+    ``color`` remains in the public signature for compatibility with existing
+    callers.  Bar charts intentionally use the shared crimson/fire palette so
+    category colors cannot make the graph feel disconnected from the app.
+    """
     if series.is_empty:
         return _empty()
 
     max_value = max(series.values) or 1
-    if series.colors:
-        rods = [fc.BarChartRod(to_y=v, color=series.colors[i], width=18,
-                               border_radius=ft.BorderRadius.all(4))
-                for i, v in enumerate(series.values)]
-    else:
-        gradient = ft.LinearGradient(
-            begin=ft.Alignment.BOTTOM_CENTER, end=ft.Alignment.TOP_CENTER,
-            colors=[theme.ACCENT_DEEP, color],
+    chart_max = max(1, max_value * 1.18)
+    width = _bar_width(len(series.values))
+    bar_radius = ft.BorderRadius.only(
+        top_left=7, top_right=7, bottom_left=2, bottom_right=2,
+    )
+    rods = [
+        fc.BarChartRod(
+            to_y=value,
+            width=width,
+            gradient=_fire_gradient(index if series.colors else 1),
+            border_radius=bar_radius,
+            border_side=ft.BorderSide(
+                width=0.8,
+                color=ft.Colors.with_opacity(0.38, _FLAME_EDGE),
+            ),
+            # The dim full-height rail makes each rod feel like a goal meter
+            # and keeps zero/low-value days legible on the black canvas.
+            bg_from_y=0,
+            bg_to_y=chart_max,
+            bgcolor=ft.Colors.with_opacity(0.08, _FLAME_EDGE),
         )
-        rods = [fc.BarChartRod(to_y=v, gradient=gradient, width=18,
-                               border_radius=ft.BorderRadius.all(4))
-                for v in series.values]
+        for index, value in enumerate(series.values)
+    ]
     groups = [fc.BarChartGroup(x=i, rods=[rod]) for i, rod in enumerate(rods)]
     bottom_axis = fc.ChartAxis(
         labels=[fc.ChartAxisLabel(value=i, label=label)
@@ -102,8 +143,20 @@ def bar_chart(series: Series, color: str = theme.ACCENT, height: int = 200) -> f
     )
     return ft.Container(
         height=height, padding=10,
-        content=fc.BarChart(groups=groups, min_y=0, max_y=max_value * 1.2,
-                            bottom_axis=bottom_axis, interactive=True),
+        content=fc.BarChart(
+            groups=groups,
+            min_y=0,
+            max_y=chart_max,
+            bottom_axis=bottom_axis,
+            group_spacing=10,
+            horizontal_grid_lines=fc.ChartGridLines(
+                color=ft.Colors.with_opacity(0.09, _FLAME_EDGE),
+                width=1,
+                dash_pattern=[3, 6],
+            ),
+            animation=ft.Animation(480, ft.AnimationCurve.EASE_OUT),
+            interactive=True,
+        ),
     )
 
 

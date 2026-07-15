@@ -18,8 +18,8 @@ import flet as ft
 
 from mobile import theme
 
-DEFAULT_HEIGHT = 200
-COMPACT_HEIGHT = 130
+DEFAULT_HEIGHT = 270
+COMPACT_HEIGHT = 175
 
 
 def hero_banner(
@@ -42,25 +42,27 @@ def hero_banner(
         )
 
     overlay_children: list[ft.Control] = [
-        # Photo, filling the stack.
-        ft.Image(src="hero.jpg", fit=ft.BoxFit.COVER,
-                 expand=True, opacity=0.9),
+        # Photo, filling the stack at full brightness — this is the prominent
+        # element now, not something to dim behind overlays.
+        ft.Image(src="hero.jpg", fit=ft.BoxFit.COVER, expand=True),
         # Understated left-to-right crimson wash (darkest where the text sits).
         ft.Container(
             expand=True,
             gradient=ft.LinearGradient(
                 begin=ft.Alignment.CENTER_LEFT, end=ft.Alignment.CENTER_RIGHT,
-                colors=[ft.Colors.with_opacity(0.55, "#3D0B10"),
+                colors=[ft.Colors.with_opacity(0.45, "#3D0B10"),
                         ft.Colors.with_opacity(0.0, "#3D0B10")],
             ),
         ),
-        # Bottom-to-top dark scrim for text legibility.
+        # Bottom-to-top dark scrim, only as tall as the text needs for contrast
+        # — kept shallow so a taller banner still shows most of the image clean.
         ft.Container(
             expand=True,
             gradient=ft.LinearGradient(
                 begin=ft.Alignment.BOTTOM_CENTER, end=ft.Alignment.TOP_CENTER,
-                colors=[ft.Colors.with_opacity(0.75, "#050506"),
-                        ft.Colors.with_opacity(0.05, "#050506")],
+                colors=[ft.Colors.with_opacity(0.7, "#050506"),
+                        ft.Colors.with_opacity(0.0, "#050506")],
+                stops=[0.0, 0.55],
             ),
         ),
         ft.Container(

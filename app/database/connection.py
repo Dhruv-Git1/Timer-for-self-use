@@ -71,6 +71,7 @@ class DatabaseManager:
     def initialize(self) -> None:
         """Create the tables (if needed) and seed defaults on first run."""
         self._create_schema()
+        self._migrate_schema()
         self._seed_defaults()
 
     def _create_schema(self) -> None:
@@ -87,6 +88,44 @@ class DatabaseManager:
         )
         # executescript runs many statements separated by ';' in one go.
         self.conn.executescript(script)
+        self.conn.commit()
+
+    def _migrate_schema(self) -> None:
+        """Upgrade an existing database without deleting or rebuilding user data.
+
+        ``CREATE TABLE IF NOT EXISTS`` cannot add columns to an existing table,
+        so schema v2 adds each new category field explicitly. Column checks make
+        this idempotent if startup was interrupted part-way through a migration.
+        """
+        columns = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(categories)").fetchall()
+        }
+        additions = {
+            "tracking_mode": (
+                "TEXT NOT NULL DEFAULT 'timer' "
+                "CHECK (tracking_mode IN ('timer', 'checkoff', 'counter'))"
+            ),
+            "daily_target_count": (
+                "INTEGER NOT NULL DEFAULT 1 CHECK (daily_target_count >= 1)"
+            ),
+            "unit_label": "TEXT NOT NULL DEFAULT 'times'",
+            "include_in_daily_score": (
+                "INTEGER NOT NULL DEFAULT 1 "
+                "CHECK (include_in_daily_score IN (0, 1))"
+            ),
+            "score_weight": "INTEGER NOT NULL DEFAULT 1 CHECK (score_weight >= 1)",
+        }
+        for name, definition in additions.items():
+            if name not in columns:
+                self.conn.execute(
+                    f"ALTER TABLE categories ADD COLUMN {name} {definition}"
+                )
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?)",
+            (config.SCHEMA_VERSION,),
+        )
         self.conn.commit()
 
     def _seed_defaults(self) -> None:

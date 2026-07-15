@@ -1,14 +1,9 @@
-"""
-The mobile Timer screen: live clock + category tap-grid + today's goal
-progress. Same logic as the desktop app/ui/views/timer_view.py (same
-TimerService, same select-then-Start flow), rebuilt for a narrow screen:
-a 2-column category grid instead of 3, full-width Start/Stop, and goal
-editing done inline (tap the pencil) instead of in a popup dialog.
+"""Android Timer plus daily Check-off/Counter tracking and Today score.
 
-The clock card gets a slow, faint "breathing" glow in the active category's
-color while tracking (the ONE pulsing element on this screen — see
-mobile/theme.py's restraint principle); it is a plain bordered card, no
-glow, while idle.
+The existing stopwatch and time-goal behavior stays intact. Non-timer progress
+is stored separately by date, and its equal-weight score is intentionally local
+to this screen: Calendar, streaks, dashboards, statistics, and Insights continue
+to use their existing time-only services.
 """
 
 from __future__ import annotations
@@ -21,11 +16,12 @@ import flet as ft
 
 from app.utils import time_utils, validators
 from mobile import theme
+from mobile.screens import categories_screen
 from mobile.widgets.fury import fury_button, fury_progress
 from mobile.widgets.hero import COMPACT_HEIGHT, hero_banner
 
-_PULSE_PERIOD = 2.6  # seconds per glow breathing cycle
-_TICK_INTERVAL = 0.2  # seconds — smoother pulse; clock text still only changes once/sec
+_PULSE_PERIOD = 2.6
+_TICK_INTERVAL = 0.2
 
 
 def _pulse_shadow(color: str) -> ft.BoxShadow:
@@ -34,34 +30,79 @@ def _pulse_shadow(color: str) -> ft.BoxShadow:
     return theme.glow(color, blur=blur)
 
 
+def _score_label(value: float) -> str:
+    return f"{value:.1f}".rstrip("0").rstrip(".") + "%"
+
+
 def build(page: ft.Page, ctx) -> ft.Control:
     state = ctx.timer_service.current_state()
-    categories = ctx.category_service.list_categories()
-    cats_by_id = {c.id: c for c in categories}
-
+    timer_categories = [
+        category for category in ctx.category_service.list_categories() if category.is_timer
+    ]
     selected = {
         "id": state.category_id if state.is_active
-        else (categories[0].id if categories else None)
+        else (timer_categories[0].id if timer_categories else None)
     }
     editing_goals = {"on": False}
     goal_inputs: dict[int, ft.TextField] = {}
 
-    clock_text = ft.Text("0:00:00", size=theme.TIMER_CLOCK_SIZE, weight=ft.FontWeight.BOLD,
-                        font_family=theme.MONO_FAMILY_SEMIBOLD,
-                        color=theme.HEADLINE, text_align=ft.TextAlign.CENTER)
-    subtitle_text = ft.Text("", size=13, color=theme.MUTED_TEXT, text_align=ft.TextAlign.CENTER)
+    clock_text = ft.Text(
+        "0:00:00",
+        size=theme.TIMER_CLOCK_SIZE,
+        weight=ft.FontWeight.BOLD,
+        font_family=theme.MONO_FAMILY_SEMIBOLD,
+        color=theme.HEADLINE,
+        text_align=ft.TextAlign.CENTER,
+    )
+    subtitle_text = ft.Text(
+        "", size=13, color=theme.MUTED_TEXT, text_align=ft.TextAlign.CENTER
+    )
     controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=10)
     clock_card = ft.Container(
-        padding=22, border_radius=16, bgcolor=theme.CARD,
+        padding=22,
+        border_radius=16,
+        bgcolor=theme.CARD,
         border=ft.Border.all(1, theme.CARD_BORDER),
         content=ft.Column(
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=6,
             controls=[clock_text, subtitle_text, controls_row],
         ),
     )
+
+    score_value = theme.number("—", size=36, color=theme.ACCENT)
+    score_subtitle = ft.Text("", size=11, color=theme.MUTED_TEXT)
+    score_bar = fury_progress(0, color=theme.ACCENT, animate_in=False)
+    score_card = theme.card(
+        ft.Column(
+            spacing=6,
+            controls=[
+                theme.section_label("Today's score"),
+                score_value,
+                score_subtitle,
+                score_bar,
+            ],
+        ),
+        padding=16,
+    )
+
     goals_column = ft.Column(spacing=8)
+    checkins_column = ft.Column(spacing=8)
     grid_column = ft.Column(spacing=8)
     goals_header = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+    categories_header = ft.Row(
+        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        controls=[
+            theme.section_label("Timer categories"),
+            ft.TextButton(
+                "Manage categories",
+                icon=ft.Icons.EDIT,
+                on_click=lambda e: categories_screen.show_manager(
+                    page, ctx, on_changed=_on_categories_changed
+                ),
+            ),
+        ],
+    )
 
     async def _tick_loop() -> None:
         last_shown_second = None
@@ -105,33 +146,43 @@ def build(page: ft.Page, ctx) -> ft.Control:
         ctx.timer_service.discard()
         _refresh_all()
 
+    def _on_categories_changed() -> None:
+        available = [
+            category for category in ctx.category_service.list_categories() if category.is_timer
+        ]
+        available_ids = {category.id for category in available}
+        if not ctx.timer_service.current_state().is_active and selected["id"] not in available_ids:
+            selected["id"] = available[0].id if available else None
+        _refresh_all()
+
     def _toggle_edit_goals(e=None) -> None:
         editing_goals["on"] = not editing_goals["on"]
         _refresh_all()
 
     def _save_goals(e=None) -> None:
-        error = None
+        timer_cats = [
+            category for category in ctx.category_service.list_categories() if category.is_timer
+        ]
         parsed: dict[int, int] = {}
-        for cat in ctx.category_service.list_categories():
-            text = goal_inputs[cat.id].value
-            ok, msg = validators.validate_target_minutes(text)
+        for category in timer_cats:
+            text = goal_inputs[category.id].value
+            ok, _msg = validators.validate_target_minutes(text)
             if not ok:
-                error = f"{cat.name}: {msg}"
-                break
-            parsed[cat.id] = int(text or 0)
-        if error is None:
-            for cat in ctx.category_service.list_categories():
-                if parsed[cat.id] != cat.daily_target_minutes:
-                    cat.daily_target_minutes = parsed[cat.id]
-                    ctx.category_service.update(cat)
-            editing_goals["on"] = False
+                _refresh_all()
+                return
+            parsed[category.id] = int(text or 0)
+        for category in timer_cats:
+            if parsed[category.id] != category.daily_target_minutes:
+                category.daily_target_minutes = parsed[category.id]
+                ctx.category_service.update(category)
+        editing_goals["on"] = False
         _refresh_all()
 
     def _refresh_goals() -> None:
         goals_column.controls.clear()
         goal_inputs.clear()
         goals_header.controls = [
-            theme.section_label("Today's Goals"),
+            theme.section_label("Today's time goals"),
             ft.IconButton(
                 icon=ft.Icons.CHECK if editing_goals["on"] else ft.Icons.EDIT,
                 icon_color=theme.ACCENT,
@@ -139,94 +190,295 @@ def build(page: ft.Page, ctx) -> ft.Control:
             ),
         ]
 
-        cats = ctx.category_service.list_categories()
+        timer_cats = [
+            category for category in ctx.category_service.list_categories() if category.is_timer
+        ]
         if editing_goals["on"]:
-            for cat in cats:
+            for category in timer_cats:
                 field = ft.TextField(
-                    value=str(cat.daily_target_minutes), width=70, height=42,
-                    text_align=ft.TextAlign.CENTER, dense=True,
+                    value=str(category.daily_target_minutes),
+                    width=70,
+                    height=42,
+                    text_align=ft.TextAlign.CENTER,
+                    dense=True,
+                    keyboard_type=ft.KeyboardType.NUMBER,
                 )
-                goal_inputs[cat.id] = field
+                goal_inputs[category.id] = field
                 goals_column.controls.append(
-                    ft.Row(controls=[
-                        ft.Icon(ft.Icons.CIRCLE, size=12, color=cat.color),
-                        ft.Text(cat.name, size=13, color=theme.HEADLINE, expand=True),
-                        field,
-                        ft.Text("min/day", size=11, color=theme.MUTED_TEXT),
-                    ])
+                    ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.CIRCLE, size=12, color=category.color),
+                            ft.Text(category.name, size=13, color=theme.HEADLINE, expand=True),
+                            field,
+                            ft.Text("min/day", size=11, color=theme.MUTED_TEXT),
+                        ]
+                    )
+                )
+            if not timer_cats:
+                goals_column.controls.append(
+                    ft.Text("Add a Timer category first.", size=12, color=theme.MUTED_TEXT)
                 )
             return
 
         summary = ctx.dashboard_service.build_summary(time_utils.today_str())
-        goals = [p for p in summary.progress if p.target_minutes > 0]
+        goals = [progress for progress in summary.progress if progress.target_minutes > 0]
         if not goals:
             goals_column.controls.append(
-                ft.Text("No daily goals set yet — tap the pencil to add one.",
-                        size=12, color=theme.MUTED_TEXT)
+                ft.Text(
+                    "No time goals set yet — tap the pencil to add one.",
+                    size=12,
+                    color=theme.MUTED_TEXT,
+                )
             )
-        for prog in goals:
+        for progress in goals:
             goals_column.controls.append(
-                ft.Column(spacing=2, controls=[
-                    ft.Row(controls=[
-                        ft.Text(prog.name, size=13, color=theme.HEADLINE, expand=True),
-                        ft.Text(f"{prog.actual_label} / {prog.target_label}",
-                                size=12, color=theme.MUTED_TEXT),
-                    ]),
-                    # animate_in=False: this section rebuilds on nearly every tap,
-                    # so a fill-from-zero replay here would read as noisy, not fierce.
-                    fury_progress(prog.completion_pct / 100, color=prog.color, animate_in=False),
-                ])
+                ft.Column(
+                    spacing=2,
+                    controls=[
+                        ft.Row(
+                            controls=[
+                                ft.Text(progress.name, size=13, color=theme.HEADLINE, expand=True),
+                                ft.Text(
+                                    f"{progress.actual_label} / {progress.target_label}",
+                                    size=12,
+                                    color=theme.MUTED_TEXT,
+                                ),
+                            ]
+                        ),
+                        fury_progress(
+                            progress.completion_pct / 100,
+                            color=progress.color,
+                            animate_in=False,
+                        ),
+                    ],
+                )
+            )
+
+    def _toggle_checkoff(category_id: int) -> None:
+        ctx.daily_progress_service.toggle(category_id, time_utils.today_str())
+        _refresh_all()
+
+    def _adjust_counter(category_id: int, delta: int) -> None:
+        ctx.daily_progress_service.increment(category_id, time_utils.today_str(), delta)
+        _refresh_all()
+
+    def _open_amount_editor(category) -> None:
+        today = time_utils.today_str()
+        current = ctx.daily_progress_service.get(category.id, today)
+        amount_field = ft.TextField(
+            label=f"Amount ({category.unit_label})",
+            value=str(current),
+            keyboard_type=ft.KeyboardType.NUMBER,
+            autofocus=True,
+        )
+        error_text = ft.Text("", size=12, color=theme.STOP_RED)
+
+        def _save_amount(e=None) -> None:
+            text = (amount_field.value or "").strip()
+            if not text.isdigit():
+                error_text.value = "Amount must be a non-negative whole number."
+                page.update()
+                return
+            ctx.daily_progress_service.set_amount(category.id, today, int(text))
+            page.pop_dialog()
+            _refresh_all()
+
+        page.show_dialog(
+            ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Set {category.name}"),
+                content=ft.Column(
+                    tight=True, spacing=8, width=280, controls=[amount_field, error_text]
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
+                    ft.Button("Save", on_click=_save_amount),
+                ],
+            )
+        )
+
+    def _refresh_score_and_checkins() -> None:
+        today = time_utils.today_str()
+        score = ctx.daily_progress_service.score(today)
+        if score.has_scored_categories:
+            score_value.value = _score_label(score.average_pct)
+            count = len(score.scored_items)
+            score_subtitle.value = (
+                f"Equal average across {count} included categor"
+                f"{'y' if count == 1 else 'ies'}"
+            )
+            score_bar.value = score.average_pct / 100
+            score_bar.data = score_bar.value
+        else:
+            score_value.value = "—"
+            score_subtitle.value = "Enable ‘Include in Today's score’ on a goal category."
+            score_bar.value = 0
+            score_bar.data = 0
+
+        checkins_column.controls.clear()
+        categories = [
+            category for category in ctx.category_service.list_categories()
+            if not category.is_timer
+        ]
+        if not categories:
+            checkins_column.controls.append(
+                ft.Text(
+                    "No daily check-ins yet — use Manage categories to add one.",
+                    size=12,
+                    color=theme.MUTED_TEXT,
+                )
+            )
+            return
+
+        for category in categories:
+            amount = ctx.daily_progress_service.get(category.id, today)
+            target = category.target_value
+            progress = min(1.0, amount / target) if target else 0.0
+            if category.is_checkoff:
+                action = ft.Checkbox(
+                    value=amount >= 1,
+                    active_color=category.color,
+                    on_change=lambda e, cid=category.id: _toggle_checkoff(cid),
+                )
+                detail = "Done" if amount else "Tap to complete"
+            else:
+                action = ft.Row(
+                    tight=True,
+                    spacing=2,
+                    controls=[
+                        ft.IconButton(
+                            icon=ft.Icons.REMOVE,
+                            icon_color=theme.MUTED_TEXT,
+                            disabled=amount <= 0,
+                            on_click=lambda e, cid=category.id: _adjust_counter(cid, -1),
+                        ),
+                        ft.TextButton(
+                            f"{amount} / {target}",
+                            on_click=lambda e, c=category: _open_amount_editor(c),
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.ADD,
+                            icon_color=category.color,
+                            on_click=lambda e, cid=category.id: _adjust_counter(cid, 1),
+                        ),
+                    ],
+                )
+                detail = category.unit_label
+
+            checkins_column.controls.append(
+                theme.card(
+                    ft.Column(
+                        spacing=5,
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    ft.Icon(ft.Icons.CIRCLE, size=11, color=category.color),
+                                    ft.Column(
+                                        expand=True,
+                                        spacing=1,
+                                        controls=[
+                                            ft.Text(category.name, size=13, color=theme.HEADLINE),
+                                            ft.Text(detail, size=10, color=theme.MUTED_TEXT),
+                                        ],
+                                    ),
+                                    action,
+                                ]
+                            ),
+                            fury_progress(progress, color=category.color, animate_in=False),
+                        ],
+                    ),
+                    padding=12,
+                    radius=10,
+                )
             )
 
     def _refresh_grid() -> None:
         grid_column.controls.clear()
-        cats = ctx.category_service.list_categories()
+        categories = [
+            category for category in ctx.category_service.list_categories() if category.is_timer
+        ]
         live = ctx.timer_service.current_state()
+        if not categories:
+            grid_column.controls.append(
+                ft.Text(
+                    "No Timer categories available. Open Manage categories to add one.",
+                    size=12,
+                    color=theme.MUTED_TEXT,
+                )
+            )
+            return
 
         row = None
-        for i, cat in enumerate(cats):
-            if i % 2 == 0:
+        for index, category in enumerate(categories):
+            if index % 2 == 0:
                 row = ft.Row(spacing=8)
                 grid_column.controls.append(row)
-            is_tracking = live.is_active and live.category_id == cat.id
-            is_selected = not live.is_active and selected["id"] == cat.id
-            border_color = cat.color if is_selected else ("#FFFFFF" if is_tracking else theme.CARD_BORDER)
-            tile = ft.Container(
-                expand=True, padding=14, border_radius=10,
-                bgcolor=cat.color if is_tracking else theme.CARD,
-                border=ft.Border.all(2 if (is_selected or is_tracking) else 1, border_color),
-                animate=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
-                content=ft.Row(spacing=6, controls=[
-                    ft.Icon(ft.Icons.CIRCLE, size=13,
-                            color="#FFFFFF" if is_tracking else cat.color),
-                    ft.Text(cat.name, size=13,
-                            color="#FFFFFF" if is_tracking else theme.HEADLINE,
-                            weight=ft.FontWeight.BOLD if (is_tracking or is_selected) else ft.FontWeight.NORMAL),
-                ]),
-                on_click=lambda e, cid=cat.id: _on_category_tap(cid),
+            is_tracking = live.is_active and live.category_id == category.id
+            is_selected = not live.is_active and selected["id"] == category.id
+            border_color = (
+                category.color if is_selected
+                else ("#FFFFFF" if is_tracking else theme.CARD_BORDER)
             )
-            row.controls.append(tile)
+            row.controls.append(
+                ft.Container(
+                    expand=True,
+                    padding=14,
+                    border_radius=10,
+                    bgcolor=category.color if is_tracking else theme.CARD,
+                    border=ft.Border.all(
+                        2 if (is_selected or is_tracking) else 1, border_color
+                    ),
+                    animate=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
+                    content=ft.Row(
+                        spacing=6,
+                        controls=[
+                            ft.Icon(
+                                ft.Icons.CIRCLE,
+                                size=13,
+                                color="#FFFFFF" if is_tracking else category.color,
+                            ),
+                            ft.Text(
+                                category.name,
+                                size=13,
+                                color="#FFFFFF" if is_tracking else theme.HEADLINE,
+                                weight=(
+                                    ft.FontWeight.BOLD
+                                    if (is_tracking or is_selected) else ft.FontWeight.NORMAL
+                                ),
+                            ),
+                        ],
+                    ),
+                    on_click=lambda e, cid=category.id: _on_category_tap(cid),
+                )
+            )
 
     def _refresh_all() -> None:
         live = ctx.timer_service.current_state()
-        cats = {c.id: c for c in ctx.category_service.list_categories()}
+        categories = {
+            category.id: category
+            for category in ctx.category_service.list_categories()
+            if category.is_timer
+        }
+        if not live.is_active and selected["id"] not in categories:
+            selected["id"] = next(iter(categories), None)
 
-        if live.is_active and live.category_id in cats:
-            cat = cats[live.category_id]
+        if live.is_active and live.category_id in categories:
+            category = categories[live.category_id]
             clock_text.value = time_utils.fmt_clock(live.elapsed_seconds)
-            clock_text.color = cat.color
-            subtitle_text.value = f"TRACKING: {cat.name.upper()}"
-            subtitle_text.color = cat.color
-            clock_card.shadow = _pulse_shadow(cat.color)
+            clock_text.color = category.color
+            subtitle_text.value = f"TRACKING: {category.name.upper()}"
+            subtitle_text.color = category.color
+            clock_card.shadow = _pulse_shadow(category.color)
         else:
             clock_text.value = time_utils.fmt_clock(0)
             clock_text.color = theme.HEADLINE
             clock_card.shadow = None
-            if selected["id"] in cats:
-                subtitle_text.value = f"Ready to start: {cats[selected['id']].name}"
-                subtitle_text.color = cats[selected["id"]].color
+            if selected["id"] in categories:
+                category = categories[selected["id"]]
+                subtitle_text.value = f"Ready to start: {category.name}"
+                subtitle_text.color = category.color
             else:
-                subtitle_text.value = "Choose a category below, then press Start"
+                subtitle_text.value = "Add a Timer category, then press Start"
                 subtitle_text.color = theme.MUTED_TEXT
 
         controls_row.controls.clear()
@@ -237,10 +489,16 @@ def build(page: ft.Page, ctx) -> ft.Control:
             controls_row.controls.append(ft.TextButton("Discard", on_click=_on_discard))
         else:
             controls_row.controls.append(
-                fury_button("Start", icon=ft.Icons.PLAY_ARROW, kind="primary",
-                           on_click=_on_start, disabled=selected["id"] is None)
+                fury_button(
+                    "Start",
+                    icon=ft.Icons.PLAY_ARROW,
+                    kind="primary",
+                    on_click=_on_start,
+                    disabled=selected["id"] is None,
+                )
             )
 
+        _refresh_score_and_checkins()
         _refresh_goals()
         _refresh_grid()
         page.update()
@@ -250,14 +508,18 @@ def build(page: ft.Page, ctx) -> ft.Control:
         _start_ticking()
 
     return ft.Column(
-        expand=True, scroll=ft.ScrollMode.AUTO, spacing=14,
+        expand=True,
+        scroll=ft.ScrollMode.AUTO,
+        spacing=14,
         controls=[
-            hero_banner(page, kicker="Live Session", headline="Timer",
-                        height=COMPACT_HEIGHT),
+            hero_banner(page, kicker="Live Session", headline="Timer", height=COMPACT_HEIGHT),
             clock_card,
+            score_card,
+            theme.section_label("Today's check-ins"),
+            checkins_column,
             goals_header,
             goals_column,
-            theme.section_label("Categories"),
+            categories_header,
             grid_column,
         ],
     )

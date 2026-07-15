@@ -20,6 +20,45 @@ _THEME_MODES = {"Dark": ft.ThemeMode.DARK, "Light": ft.ThemeMode.LIGHT, "System"
 def build(page: ft.Page, ctx) -> ft.Control:
     status_text = ft.Text("", size=12, color=theme.MUTED_TEXT)
     theme_row = ft.Row(spacing=6)
+    score_column = ft.Column(spacing=8)
+
+    def _toggle_score_inclusion(category, included: bool) -> None:
+        category.include_in_daily_score = included
+        ctx.category_service.update(category)
+
+    def _set_score_weight(category, weight_str: str) -> None:
+        category.score_weight = int(weight_str)
+        ctx.category_service.update(category)
+
+    def _refresh_score_section() -> None:
+        score_column.controls.clear()
+        scoreable = [c for c in ctx.category_service.list_categories() if c.has_target]
+        if not scoreable:
+            score_column.controls.append(
+                ft.Text("Give a category a daily goal to include it in Today's score.",
+                        size=12, color=theme.MUTED_TEXT)
+            )
+            return
+        for category in scoreable:
+            score_column.controls.append(
+                ft.Row(controls=[
+                    ft.Icon(ft.Icons.CIRCLE, size=11, color=category.color),
+                    ft.Text(category.name, size=13, color=theme.HEADLINE, expand=True),
+                    ft.Dropdown(
+                        value=str(category.score_weight),
+                        options=[ft.DropdownOption(key=str(w), text=f"{w}x") for w in range(1, 6)],
+                        width=68,
+                        on_select=lambda e, c=category: _set_score_weight(c, e.control.value),
+                    ),
+                    ft.Switch(
+                        value=category.include_in_daily_score,
+                        active_color=theme.ACCENT,
+                        on_change=lambda e, c=category: _toggle_score_inclusion(c, e.control.value),
+                    ),
+                ])
+            )
+
+    _refresh_score_section()
 
     def _set_theme(mode: str) -> None:
         ctx.set_setting("theme", mode.lower())
@@ -55,6 +94,18 @@ def build(page: ft.Page, ctx) -> ft.Control:
 
             theme.section_label("Appearance"),
             theme_row,
+
+            theme.section_label("Today's Score"),
+            ft.Text(
+                "Today's score is a weighted average: each category below is "
+                "0-100% complete toward its own daily goal (time, check-off, or "
+                "counter), then combined using the weight next to it — a 3x "
+                "category counts 3 times as much as a 1x one. Turn a category "
+                "off to leave it out of the score entirely; nothing else about "
+                "it changes.",
+                size=12, color=theme.MUTED_TEXT,
+            ),
+            score_column,
 
             theme.section_label("Export data"),
             ft.Row(controls=[

@@ -47,6 +47,18 @@ class CategoryRepository(BaseRepository):
         ).fetchone()
         return row["n"]
 
+    def count_progress_rows(self, category_id: int) -> int:
+        """How many saved checkbox/counter days reference this category."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM daily_progress WHERE category_id = ?",
+            (category_id,),
+        ).fetchone()
+        return row["n"]
+
+    def has_history(self, category_id: int) -> bool:
+        """Whether changing this category's tracking mode would reinterpret data."""
+        return self.count_entries(category_id) > 0 or self.count_progress_rows(category_id) > 0
+
     # ------------------------------------------------------------------ #
     # Writes
     # ------------------------------------------------------------------ #
@@ -57,16 +69,24 @@ class CategoryRepository(BaseRepository):
         is_productive: bool,
         daily_target_minutes: int,
         sort_order: int = 0,
+        tracking_mode: str = "timer",
+        daily_target_count: int = 1,
+        unit_label: str = "times",
+        include_in_daily_score: bool = True,
+        score_weight: int = 1,
     ) -> int:
         """Insert a new category and return its new id."""
         cur = self.conn.execute(
             """
             INSERT INTO categories
-                (name, color, is_productive, daily_target_minutes, sort_order)
-            VALUES (?, ?, ?, ?, ?)
+                (name, color, is_productive, daily_target_minutes, sort_order,
+                 tracking_mode, daily_target_count, unit_label,
+                 include_in_daily_score, score_weight)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (name.strip(), color, 1 if is_productive else 0,
-             daily_target_minutes, sort_order),
+             daily_target_minutes, sort_order, tracking_mode, daily_target_count,
+             unit_label.strip(), 1 if include_in_daily_score else 0, score_weight),
         )
         self.conn.commit()
         return cur.lastrowid
@@ -82,6 +102,11 @@ class CategoryRepository(BaseRepository):
                    daily_target_minutes = ?,
                    sort_order = ?,
                    is_archived = ?,
+                   tracking_mode = ?,
+                   daily_target_count = ?,
+                   unit_label = ?,
+                   include_in_daily_score = ?,
+                   score_weight = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
@@ -92,6 +117,11 @@ class CategoryRepository(BaseRepository):
                 category.daily_target_minutes,
                 category.sort_order,
                 1 if category.is_archived else 0,
+                category.tracking_mode,
+                category.daily_target_count,
+                category.unit_label.strip(),
+                1 if category.include_in_daily_score else 0,
+                category.score_weight,
                 category.id,
             ),
         )
