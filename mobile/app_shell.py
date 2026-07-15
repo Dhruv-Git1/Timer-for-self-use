@@ -17,6 +17,7 @@ from mobile.screens import (
     search_screen, settings_screen, statistics_screen, timer_screen,
 )
 from mobile.storage import get_context
+from mobile.widgets.fury import screen_enter
 
 _TABS = [
     ("timer", "Timer", ft.Icons.TIMER),
@@ -50,6 +51,9 @@ class AppShell:
             selected_index=0,
             bgcolor=theme.SIDEBAR,
             indicator_color=theme.ACCENT,
+            indicator_shape=ft.RoundedRectangleBorder(radius=8),
+            elevation=8,
+            shadow_color=theme.ACCENT_GLOW,
             on_change=self._on_nav_change,
             destinations=[
                 ft.NavigationBarDestination(icon=icon, label=label)
@@ -85,7 +89,7 @@ class AppShell:
         else:  # more
             content = self._build_more_list()
 
-        self.body.content = content
+        self.body.content = screen_enter(content, self.page)
         self.page.update()
 
     def _build_more_list(self) -> ft.Control:
@@ -93,11 +97,18 @@ class AppShell:
         for label, icon, builder in _MORE_ITEMS:
             rows.append(
                 ft.Container(
-                    padding=16, border_radius=10, bgcolor=theme.CARD,
-                    content=ft.Row(controls=[
-                        ft.Icon(icon, color=theme.MUTED_TEXT),
-                        ft.Text(label, size=15, color=theme.HEADLINE),
-                    ]),
+                    padding=16, border_radius=12, bgcolor=theme.CARD,
+                    border=ft.Border.all(1, theme.CARD_BORDER),
+                    content=ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        controls=[
+                            ft.Row(controls=[
+                                ft.Icon(icon, color=theme.MUTED_TEXT, size=20),
+                                ft.Text(label, size=15, color=theme.HEADLINE),
+                            ]),
+                            ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.MONO_LABEL, size=18),
+                        ],
+                    ),
                     on_click=lambda e, l=label, b=builder: self._open_more_item(l, b),
                 )
             )
@@ -105,7 +116,8 @@ class AppShell:
 
     def _open_more_item(self, label: str, builder) -> None:
         if builder is not None:
-            self.body.content = builder(self.page, self.ctx)
+            content = builder(self.page, self.ctx)
         else:
-            self.body.content = placeholder_screen.build(label, "Coming in a future milestone.")
+            content = placeholder_screen.build(label, "Coming in a future milestone.")
+        self.body.content = screen_enter(content, self.page)
         self.page.update()

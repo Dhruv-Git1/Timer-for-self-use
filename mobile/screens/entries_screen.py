@@ -11,6 +11,7 @@ import flet as ft
 
 from app.utils import time_utils, validators
 from mobile import theme
+from mobile.widgets.fury import fury_button
 
 
 def build(page: ft.Page, ctx) -> ft.Control:
@@ -103,6 +104,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
             list_column.controls.append(
                 ft.Container(
                     padding=12, border_radius=10, bgcolor=theme.CARD,
+                    border=ft.Border.all(1, theme.CARD_BORDER),
                     on_click=lambda e, en=entry: _open_form(en),
                     content=ft.Row(controls=[
                         ft.Icon(ft.Icons.CIRCLE, size=12, color=entry.category_color),
@@ -126,15 +128,14 @@ def build(page: ft.Page, ctx) -> ft.Control:
         ],
     )
     actions_row = ft.Row(controls=[
-        ft.Button("Add entry", icon=ft.Icons.ADD, bgcolor=theme.ACCENT, color="#FFFFFF",
-                 on_click=lambda e: _open_form()),
+        fury_button("Add entry", icon=ft.Icons.ADD, kind="primary", on_click=lambda e: _open_form()),
         ft.TextButton("Duplicate previous day", on_click=_duplicate_prev),
     ])
 
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=14,
         controls=[
-            ft.Text("Today's Entries", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display("Today's Entries", size=26),
             nav, actions_row, list_column,
         ],
     )

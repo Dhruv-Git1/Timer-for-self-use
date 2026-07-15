@@ -16,8 +16,9 @@ from mobile.widgets import charts
 
 def _section(title: str, chart: ft.Control) -> ft.Control:
     return ft.Column(spacing=6, controls=[
-        ft.Text(title, size=14, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
-        ft.Container(bgcolor=theme.CARD, border_radius=12, content=chart),
+        theme.section_label(title),
+        ft.Container(bgcolor=theme.CARD, border_radius=12,
+                     border=ft.Border.all(1, theme.CARD_BORDER), content=chart),
     ])
 
 
@@ -34,7 +35,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=18,
         controls=[
-            ft.Text("Graphs", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display("Graphs", size=28),
             _section("Daily Productive Hours (14 days)", charts.line_chart(daily, "#3B82F6")),
             _section("Weekly Productivity (8 weeks)", charts.bar_chart(weekly, theme.ACCENT)),
             _section("Monthly Totals (6 months)", charts.bar_chart(monthly, "#10B981")),

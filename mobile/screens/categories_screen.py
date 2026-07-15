@@ -27,6 +27,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
             list_column.controls.append(
                 ft.Container(
                     padding=14, border_radius=10, bgcolor=theme.CARD,
+                    border=ft.Border.all(1, theme.CARD_BORDER),
                     on_click=lambda e, c=cat: _open_form(c),
                     content=ft.Row(controls=[
                         ft.Icon(ft.Icons.CIRCLE, size=14, color=cat.color),
@@ -142,7 +143,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=14,
         controls=[
             ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[
-                ft.Text("Categories", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+                theme.display("Categories", size=28),
                 ft.IconButton(icon=ft.Icons.ADD, icon_color=theme.ACCENT,
                              on_click=lambda e: _open_form()),
             ]),

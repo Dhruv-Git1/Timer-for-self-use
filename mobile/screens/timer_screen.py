@@ -4,16 +4,34 @@ progress. Same logic as the desktop app/ui/views/timer_view.py (same
 TimerService, same select-then-Start flow), rebuilt for a narrow screen:
 a 2-column category grid instead of 3, full-width Start/Stop, and goal
 editing done inline (tap the pencil) instead of in a popup dialog.
+
+The clock card gets a slow, faint "breathing" glow in the active category's
+color while tracking (the ONE pulsing element on this screen — see
+mobile/theme.py's restraint principle); it is a plain bordered card, no
+glow, while idle.
 """
 
 from __future__ import annotations
 
 import asyncio
+import math
+import time
 
 import flet as ft
 
 from app.utils import time_utils, validators
 from mobile import theme
+from mobile.widgets.fury import fury_button, fury_progress
+from mobile.widgets.hero import COMPACT_HEIGHT, hero_banner
+
+_PULSE_PERIOD = 2.6  # seconds per glow breathing cycle
+_TICK_INTERVAL = 0.2  # seconds — smoother pulse; clock text still only changes once/sec
+
+
+def _pulse_shadow(color: str) -> ft.BoxShadow:
+    phase = (time.time() % _PULSE_PERIOD) / _PULSE_PERIOD
+    blur = 14 + 10 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
+    return theme.glow(color, blur=blur)
 
 
 def build(page: ft.Page, ctx) -> ft.Control:
@@ -28,21 +46,34 @@ def build(page: ft.Page, ctx) -> ft.Control:
     editing_goals = {"on": False}
     goal_inputs: dict[int, ft.TextField] = {}
 
-    clock_text = ft.Text("0:00:00", size=48, weight=ft.FontWeight.BOLD,
+    clock_text = ft.Text("0:00:00", size=theme.TIMER_CLOCK_SIZE, weight=ft.FontWeight.BOLD,
+                        font_family=theme.MONO_FAMILY_SEMIBOLD,
                         color=theme.HEADLINE, text_align=ft.TextAlign.CENTER)
     subtitle_text = ft.Text("", size=13, color=theme.MUTED_TEXT, text_align=ft.TextAlign.CENTER)
     controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=10)
+    clock_card = ft.Container(
+        padding=22, border_radius=16, bgcolor=theme.CARD,
+        border=ft.Border.all(1, theme.CARD_BORDER),
+        content=ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6,
+            controls=[clock_text, subtitle_text, controls_row],
+        ),
+    )
     goals_column = ft.Column(spacing=8)
     grid_column = ft.Column(spacing=8)
     goals_header = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
     async def _tick_loop() -> None:
+        last_shown_second = None
         while True:
-            await asyncio.sleep(1)
+            await asyncio.sleep(_TICK_INTERVAL)
             live = ctx.timer_service.current_state()
             if not live.is_active:
                 break
-            clock_text.value = time_utils.fmt_clock(live.elapsed_seconds)
+            if live.elapsed_seconds != last_shown_second:
+                clock_text.value = time_utils.fmt_clock(live.elapsed_seconds)
+                last_shown_second = live.elapsed_seconds
+            clock_card.shadow = _pulse_shadow(clock_text.color)
             page.update()
 
     def _start_ticking() -> None:
@@ -100,7 +131,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
         goals_column.controls.clear()
         goal_inputs.clear()
         goals_header.controls = [
-            ft.Text("Today's Goals", size=15, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.section_label("Today's Goals"),
             ft.IconButton(
                 icon=ft.Icons.CHECK if editing_goals["on"] else ft.Icons.EDIT,
                 icon_color=theme.ACCENT,
@@ -141,8 +172,9 @@ def build(page: ft.Page, ctx) -> ft.Control:
                         ft.Text(f"{prog.actual_label} / {prog.target_label}",
                                 size=12, color=theme.MUTED_TEXT),
                     ]),
-                    ft.ProgressBar(value=prog.completion_pct / 100, color=prog.color,
-                                  bgcolor=theme.NEUTRAL_BTN, border_radius=8),
+                    # animate_in=False: this section rebuilds on nearly every tap,
+                    # so a fill-from-zero replay here would read as noisy, not fierce.
+                    fury_progress(prog.completion_pct / 100, color=prog.color, animate_in=False),
                 ])
             )
 
@@ -163,6 +195,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 expand=True, padding=14, border_radius=10,
                 bgcolor=cat.color if is_tracking else theme.CARD,
                 border=ft.Border.all(2 if (is_selected or is_tracking) else 1, border_color),
+                animate=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
                 content=ft.Row(spacing=6, controls=[
                     ft.Icon(ft.Icons.CIRCLE, size=13,
                             color="#FFFFFF" if is_tracking else cat.color),
@@ -182,11 +215,13 @@ def build(page: ft.Page, ctx) -> ft.Control:
             cat = cats[live.category_id]
             clock_text.value = time_utils.fmt_clock(live.elapsed_seconds)
             clock_text.color = cat.color
-            subtitle_text.value = f"Tracking: {cat.name}"
+            subtitle_text.value = f"TRACKING: {cat.name.upper()}"
             subtitle_text.color = cat.color
+            clock_card.shadow = _pulse_shadow(cat.color)
         else:
             clock_text.value = time_utils.fmt_clock(0)
             clock_text.color = theme.HEADLINE
+            clock_card.shadow = None
             if selected["id"] in cats:
                 subtitle_text.value = f"Ready to start: {cats[selected['id']].name}"
                 subtitle_text.color = cats[selected["id"]].color
@@ -197,15 +232,13 @@ def build(page: ft.Page, ctx) -> ft.Control:
         controls_row.controls.clear()
         if live.is_active:
             controls_row.controls.append(
-                ft.Button("Stop", icon=ft.Icons.STOP, bgcolor=theme.STOP_RED,
-                         color="#FFFFFF", on_click=_on_stop)
+                fury_button("Stop", icon=ft.Icons.STOP, kind="danger", on_click=_on_stop)
             )
             controls_row.controls.append(ft.TextButton("Discard", on_click=_on_discard))
         else:
             controls_row.controls.append(
-                ft.Button("Start", icon=ft.Icons.PLAY_ARROW, bgcolor=theme.ACCENT,
-                         color="#FFFFFF", on_click=_on_start,
-                         disabled=selected["id"] is None)
+                fury_button("Start", icon=ft.Icons.PLAY_ARROW, kind="primary",
+                           on_click=_on_start, disabled=selected["id"] is None)
             )
 
         _refresh_goals()
@@ -219,16 +252,12 @@ def build(page: ft.Page, ctx) -> ft.Control:
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=14,
         controls=[
-            ft.Container(
-                padding=20, border_radius=16, bgcolor=theme.CARD,
-                content=ft.Column(
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6,
-                    controls=[clock_text, subtitle_text, controls_row],
-                ),
-            ),
+            hero_banner(page, kicker="Live Session", headline="Timer",
+                        height=COMPACT_HEIGHT),
+            clock_card,
             goals_header,
             goals_column,
-            ft.Text("Categories", size=15, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.section_label("Categories"),
             grid_column,
         ],
     )

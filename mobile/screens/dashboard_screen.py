@@ -10,6 +10,7 @@ import flet as ft
 
 from app.utils import time_utils
 from mobile import theme
+from mobile.widgets.fury import fury_progress
 from mobile.widgets.stat_card import stat_card
 
 
@@ -64,8 +65,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
                         ft.Text(prog.name, size=13, color=theme.HEADLINE, expand=True),
                         ft.Text(label, size=12, color=theme.MUTED_TEXT),
                     ]),
-                    ft.ProgressBar(value=prog.completion_pct / 100, color=prog.color,
-                                  bgcolor=theme.NEUTRAL_BTN, border_radius=8),
+                    fury_progress(prog.completion_pct / 100, color=prog.color, animate_in=False),
                 ])
             )
         page.update()
@@ -85,9 +85,9 @@ def build(page: ft.Page, ctx) -> ft.Control:
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=14,
         controls=[
-            ft.Text("Dashboard", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display("Dashboard", size=28),
             nav, banner, cards_row,
-            ft.Text("Time by category", size=15, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.section_label("Time by category"),
             table_column,
         ],
     )

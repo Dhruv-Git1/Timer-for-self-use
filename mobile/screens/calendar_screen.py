@@ -98,7 +98,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 row.controls.append(
                     ft.Container(
                         width=_CELL, height=_CELL, border_radius=8, bgcolor=color,
-                        border=ft.Border.all(2, "#FFFFFF") if is_today else None,
+                        border=ft.Border.all(3, theme.ACCENT) if is_today else None,
                         alignment=ft.Alignment.CENTER,
                         content=ft.Text(str(day), size=13, weight=ft.FontWeight.BOLD, color="#FFFFFF"),
                         on_click=lambda e, d=date_str: _show_day(d),
@@ -122,7 +122,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=12,
         controls=[
-            ft.Text("Calendar", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display("Calendar", size=28),
             nav, grid_column,
         ],
     )

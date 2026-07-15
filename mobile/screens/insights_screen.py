@@ -60,14 +60,26 @@ def build(page: ft.Page, ctx) -> ft.Control:
         year = state["year"]
         year_label.value = str(year)
 
+        y0, y1 = f"{year:04d}-01-01", f"{year:04d}-12-31"
         day_minutes = data.category_year_heatmap(category.id, year)
-        stats = data.category_summary_stats(category.id, f"{year:04d}-01-01", f"{year:04d}-12-31")
+        stats = data.category_summary_stats(category.id, y0, y1)
+        daily_series = data.category_daily_hours(category.id, n_days=30)
+        monthly_series = data.category_monthly_hours(category.id, year)
+        cumulative_series = data.category_cumulative_hours(category.id, year)
         weekday_series = data.category_weekday_pattern(category.id, n_weeks=12)
+        time_of_day_series = data.category_time_of_day(category.id, n_days=90)
         best_subtitle = time_utils.fmt_short_date(stats.best_day_date) if stats.best_day_date else ""
+
+        def chart_card(chart: ft.Control) -> ft.Container:
+            return ft.Container(
+                bgcolor=theme.CARD, border_radius=12,
+                border=ft.Border.all(1, theme.CARD_BORDER), content=chart,
+            )
 
         body.controls = [
             ft.Container(
                 bgcolor=theme.CARD, border_radius=12, padding=12,
+                border=ft.Border.all(1, theme.CARD_BORDER),
                 content=heatmap.build(day_minutes, year, category.color),
             ),
             ft.ResponsiveRow(controls=[
@@ -77,12 +89,16 @@ def build(page: ft.Page, ctx) -> ft.Control:
                          "day" if stats.current_streak_days == 1 else "days", accent=category.color),
                 stat_card("Best Day", stats.best_day_label, best_subtitle, accent=category.color),
             ]),
-            ft.Text("Weekday pattern (last 12 weeks)", size=14, weight=ft.FontWeight.BOLD,
-                    color=theme.HEADLINE),
-            ft.Container(
-                bgcolor=theme.CARD, border_radius=12,
-                content=charts.bar_chart(weekday_series, category.color),
-            ),
+            theme.section_label("Daily hours (last 30 days)"),
+            chart_card(charts.line_chart(daily_series, category.color, height=190)),
+            theme.section_label(f"Monthly hours ({year})"),
+            chart_card(charts.line_chart(monthly_series, category.color, height=190)),
+            theme.section_label(f"Cumulative hours ({year})"),
+            chart_card(charts.line_chart(cumulative_series, category.color, height=190)),
+            theme.section_label("Weekday pattern (last 12 weeks)"),
+            chart_card(charts.bar_chart(weekday_series, category.color)),
+            theme.section_label("Time of day (last 90 days)"),
+            chart_card(charts.bar_chart(time_of_day_series, category.color)),
         ]
         page.update()
 
@@ -91,7 +107,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
     header = ft.Row(
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         controls=[
-            ft.Text("Insights", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display("Insights", size=28),
             category_dropdown,
         ],
     )

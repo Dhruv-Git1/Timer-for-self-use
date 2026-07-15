@@ -207,6 +207,80 @@ class ChartDataProvider:
         """One category's minutes for every day of ``year`` (Jan 1 – Dec 31)."""
         return self.category_day_minutes(category_id, f"{year:04d}-01-01", f"{year:04d}-12-31")
 
+    def category_monthly_hours(self, category_id: int, year: int) -> Series:
+        """One category's total hours per month (Jan..Dec) across ``year``.
+
+        Pairs with the year heatmap on the Insights screen: the heatmap shows
+        this task day-by-day, this series shows its month-by-month trend for
+        the same year — so a single task's whole story lives on one screen.
+        """
+        per_day = self.category_day_minutes(
+            category_id, f"{year:04d}-01-01", f"{year:04d}-12-31"
+        )
+        totals = [0] * 12
+        for day, minutes in per_day.items():
+            month = int(day[5:7])          # "YYYY-MM-DD" -> MM
+            totals[month - 1] += minutes
+        labels = [_calendar.month_abbr[m] for m in range(1, 13)]
+        values = [round(minutes / 60, 1) for minutes in totals]
+        return Series(labels=labels, values=values)
+
+    def category_daily_hours(self, category_id: int, n_days: int = 30) -> Series:
+        """One category's hours per day for the last ``n_days`` (a recent zoom-in
+        to complement the year heatmap/monthly trend)."""
+        today = time_utils.today_str()
+        start = time_utils.add_days(today, -(n_days - 1))
+        per_day = self.category_day_minutes(category_id, start, today)
+        labels, values = [], []
+        for day in sorted(per_day):
+            labels.append(day[5:])          # "MM-DD"
+            values.append(round(per_day[day] / 60, 2))
+        return Series(labels=labels, values=values)
+
+    def category_cumulative_hours(self, category_id: int, year: int) -> Series:
+        """One category's running total of hours across ``year`` (a momentum
+        line — how the yearly total built up day by day). For the current year
+        it stops at today rather than trailing a flat line to Dec 31."""
+        today = time_utils.today_str()
+        current_year = time_utils.to_date(today).year
+        start = f"{year:04d}-01-01"
+        end = today if year == current_year else f"{year:04d}-12-31"
+        if end < start:                     # a future year — nothing yet
+            return Series()
+        per_day = self.category_day_minutes(category_id, start, end)
+        labels, values = [], []
+        running = 0
+        for day in sorted(per_day):
+            running += per_day[day]
+            labels.append(day[5:])          # "MM-DD"
+            values.append(round(running / 60, 2))
+        return Series(labels=labels, values=values)
+
+    def category_time_of_day(self, category_id: int, n_days: int = 90) -> Series:
+        """One category's hours grouped by part of the day (Night/Morning/
+        Afternoon/Evening) over the last ``n_days`` — "when do you tend to do
+        this?". Each session's minutes are attributed to the part of day it
+        started in (four coarse buckets read cleanly on a phone; a full 24-bar
+        histogram would be too dense)."""
+        today = time_utils.today_str()
+        start = time_utils.add_days(today, -(n_days - 1))
+        entries = [
+            e for e in self.entries.list_by_date_range(start, today)
+            if e.category_id == category_id
+        ]
+        parts = [(0, 6, "Night"), (6, 12, "Morning"),
+                 (12, 18, "Afternoon"), (18, 24, "Evening")]
+        buckets = [0] * len(parts)
+        for entry in entries:
+            hour = int(entry.start_time[:2])        # "HH:MM" -> HH
+            for i, (lo, hi, _name) in enumerate(parts):
+                if lo <= hour < hi:
+                    buckets[i] += entry.duration_minutes
+                    break
+        labels = [name for _lo, _hi, name in parts]
+        values = [round(minutes / 60, 2) for minutes in buckets]
+        return Series(labels=labels, values=values)
+
     def category_weekday_pattern(self, category_id: int, n_weeks: int = 12) -> Series:
         """Average hours per weekday (Mon..Sun) for one category, last ``n_weeks``."""
         today = time_utils.today_str()

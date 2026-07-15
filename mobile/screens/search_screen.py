@@ -9,6 +9,7 @@ import flet as ft
 
 from app.utils import validators
 from mobile import theme
+from mobile.widgets.fury import fury_button
 
 
 def build(page: ft.Page, ctx) -> ft.Control:
@@ -41,6 +42,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
             results_column.controls.append(
                 ft.Container(
                     padding=12, border_radius=10, bgcolor=theme.CARD,
+                    border=ft.Border.all(1, theme.CARD_BORDER),
                     on_click=lambda ev, en=entry: _open_edit(en),
                     content=ft.Row(controls=[
                         ft.Icon(ft.Icons.CIRCLE, size=11, color=entry.category_color),
@@ -103,8 +105,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
         keyword_field,
         ft.Row(wrap=True, controls=[category_dropdown, date_field]),
         ft.Row(controls=[
-            ft.Button("Search", icon=ft.Icons.SEARCH, bgcolor=theme.ACCENT, color="#FFFFFF",
-                     on_click=_search),
+            fury_button("Search", icon=ft.Icons.SEARCH, kind="primary", on_click=_search),
             ft.TextButton("Clear", on_click=_clear),
         ]),
     ])
@@ -114,7 +115,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=14,
         controls=[
-            ft.Text("Search", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display("Search", size=28),
             filters,
             results_column,
         ],

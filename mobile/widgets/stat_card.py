@@ -9,10 +9,11 @@ from mobile import theme
 
 def stat_card(title: str, value: str, subtitle: str = "", accent: str = theme.ACCENT) -> ft.Container:
     column_controls = [
-        ft.Text(value, size=24, weight=ft.FontWeight.BOLD, color=theme.HEADLINE,
-                text_align=ft.TextAlign.CENTER),
+        theme.number(value, size=theme.STAT_NUMBER_SIZE),
         ft.Container(width=28, height=3, bgcolor=accent, border_radius=2),
-        ft.Text(title.upper(), size=10, color=theme.MONO_LABEL, text_align=ft.TextAlign.CENTER),
+        theme.tracked(title.upper(), size=theme.STAT_LABEL_SIZE, color=theme.MONO_LABEL,
+                      family=theme.MONO_FAMILY_SEMIBOLD, spacing=theme.TRACK_TIGHT,
+                      text_align=ft.TextAlign.CENTER),
     ]
     if subtitle:
         column_controls.append(

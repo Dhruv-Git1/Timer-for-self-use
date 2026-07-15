@@ -11,6 +11,7 @@ from __future__ import annotations
 import flet as ft
 
 from mobile import theme
+from mobile.widgets.fury import fury_button
 
 _THEMES = ["Dark", "Light", "System"]
 _THEME_MODES = {"Dark": ft.ThemeMode.DARK, "Light": ft.ThemeMode.LIGHT, "System": ft.ThemeMode.SYSTEM}
@@ -33,7 +34,8 @@ def build(page: ft.Page, ctx) -> ft.Control:
             ft.Container(
                 data=mode, padding=ft.Padding.symmetric(vertical=8, horizontal=16),
                 border_radius=8, bgcolor=theme.ACCENT if mode == current_theme else theme.NEUTRAL_BTN,
-                content=ft.Text(mode, size=13, color="#FFFFFF"),
+                content=theme.tracked(mode.upper(), size=12, color=theme.HEADLINE,
+                                       family=theme.MONO_FAMILY_SEMIBOLD, spacing=0.6),
                 on_click=lambda e, m=mode: _set_theme(m),
             )
         )
@@ -49,19 +51,19 @@ def build(page: ft.Page, ctx) -> ft.Control:
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=20,
         controls=[
-            ft.Text("Settings", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display("Settings", size=28),
 
-            ft.Text("Appearance", size=14, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.section_label("Appearance"),
             theme_row,
 
-            ft.Text("Export data", size=14, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.section_label("Export data"),
             ft.Row(controls=[
-                ft.Button("CSV", on_click=lambda e: _export("csv")),
-                ft.Button("JSON", on_click=lambda e: _export("json")),
+                fury_button("CSV", kind="secondary", on_click=lambda e: _export("csv")),
+                fury_button("JSON", kind="secondary", on_click=lambda e: _export("json")),
             ]),
             status_text,
 
-            ft.Text("About", size=14, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.section_label("About"),
             ft.Text("Personal Time Tracker & Productivity Dashboard\n"
                     "Offline — your data never leaves this device.",
                     size=12, color=theme.MUTED_TEXT),

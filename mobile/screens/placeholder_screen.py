@@ -14,7 +14,7 @@ def build(title: str, message: str) -> ft.Control:
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         controls=[
             ft.Icon(ft.Icons.CONSTRUCTION, size=40, color=theme.MUTED_TEXT),
-            ft.Text(title, size=18, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display(title, size=24),
             ft.Text(message, size=13, color=theme.MUTED_TEXT, text_align=ft.TextAlign.CENTER),
         ],
     )

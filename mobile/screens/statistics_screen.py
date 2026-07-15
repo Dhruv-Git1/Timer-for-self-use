@@ -13,6 +13,7 @@ import flet as ft
 
 from app.utils import time_utils
 from mobile import theme
+from mobile.widgets.fury import fury_progress
 from mobile.widgets.stat_card import stat_card
 
 _PERIODS = ["Daily", "Weekly", "Monthly", "Yearly"]
@@ -108,7 +109,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
                             ft.Text(f"{time_utils.fmt_duration(minutes)} ({share * 100:.0f}%)",
                                     size=12, color=theme.MUTED_TEXT),
                         ]),
-                        ft.ProgressBar(value=share, color=color, bgcolor=theme.NEUTRAL_BTN, border_radius=8),
+                        fury_progress(share, color=color, animate_in=False),
                     ])
                 )
         page.update()
@@ -118,7 +119,8 @@ def build(page: ft.Page, ctx) -> ft.Control:
             ft.Container(
                 data=period, padding=ft.Padding.symmetric(vertical=6, horizontal=12),
                 border_radius=8, bgcolor=theme.ACCENT if period == state["period"] else theme.NEUTRAL_BTN,
-                content=ft.Text(period, size=12, color="#FFFFFF"),
+                content=theme.tracked(period.upper(), size=12, color=theme.HEADLINE,
+                                       family=theme.MONO_FAMILY_SEMIBOLD, spacing=0.6),
                 on_click=lambda e, p=period: _set_period(p),
             )
         )
@@ -137,9 +139,9 @@ def build(page: ft.Page, ctx) -> ft.Control:
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=14,
         controls=[
-            ft.Text("Statistics", size=22, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.display("Statistics", size=28),
             period_row, nav, cards_row, info_text,
-            ft.Text("Time by category", size=15, weight=ft.FontWeight.BOLD, color=theme.HEADLINE),
+            theme.section_label("Time by category"),
             table_column,
         ],
     )

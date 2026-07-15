@@ -34,7 +34,7 @@ def _cell_color(minutes: int, max_minutes: int, base_color: str) -> str:
     return "#%02X%02X%02X" % mixed
 
 
-def build(day_minutes: Dict[str, int], year: int, base_color: str) -> ft.Control:
+def build(day_minutes: Dict[str, int], year: int, base_color: str = theme.ACCENT) -> ft.Control:
     """A horizontally-scrollable week-by-week heatmap for one category's year."""
     if not any(day_minutes.values()):
         return ft.Container(

@@ -32,6 +32,11 @@ def main(page: ft.Page) -> None:
     page.bgcolor = theme.BG
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
+    page.fonts = {
+        theme.DISPLAY_FAMILY: "fonts/BebasNeue-Regular.ttf",
+        theme.MONO_FAMILY: "fonts/IBMPlexMono-Regular.ttf",
+        theme.MONO_FAMILY_SEMIBOLD: "fonts/IBMPlexMono-SemiBold.ttf",
+    }
 
     AppShell(page)
 
