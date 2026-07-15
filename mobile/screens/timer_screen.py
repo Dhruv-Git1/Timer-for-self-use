@@ -512,7 +512,15 @@ def build(page: ft.Page, ctx) -> ft.Control:
         scroll=ft.ScrollMode.AUTO,
         spacing=14,
         controls=[
-            hero_banner(page, kicker="Live Session", headline="Timer", height=COMPACT_HEIGHT),
+            hero_banner(
+                page,
+                kicker="Live Session",
+                headline="Timer",
+                height=COMPACT_HEIGHT,
+                # Nudge the cover crop down so the hero shows the character's
+                # shoulders/chest as well as the face.
+                image_align=ft.Alignment(0, 0.34),
+            ),
             clock_card,
             score_card,
             theme.section_label("Today's check-ins"),

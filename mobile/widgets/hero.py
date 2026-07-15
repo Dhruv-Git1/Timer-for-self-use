@@ -19,7 +19,9 @@ import flet as ft
 from mobile import theme
 
 DEFAULT_HEIGHT = 270
-COMPACT_HEIGHT = 175
+# The Timer is the primary live-work screen, so its hero needs enough vertical
+# room to retain the character's shoulders instead of reading as a thin crop.
+COMPACT_HEIGHT = 220
 
 
 def hero_banner(
@@ -29,6 +31,7 @@ def hero_banner(
     subtitle: str = "",
     height: float = DEFAULT_HEIGHT,
     with_clock: bool = False,
+    image_align: ft.Alignment = ft.Alignment.CENTER,
 ) -> ft.Control:
     text_column_controls: list[ft.Control] = [
         theme.tracked(kicker.upper(), size=theme.HERO_KICKER_SIZE,
@@ -44,7 +47,12 @@ def hero_banner(
     overlay_children: list[ft.Control] = [
         # Photo, filling the stack at full brightness — this is the prominent
         # element now, not something to dim behind overlays.
-        ft.Image(src="hero.jpg", fit=ft.BoxFit.COVER, expand=True),
+        ft.Image(
+            src="hero.jpg",
+            fit=ft.BoxFit.COVER,
+            align=image_align,
+            expand=True,
+        ),
         # Understated left-to-right crimson wash (darkest where the text sits).
         ft.Container(
             expand=True,
