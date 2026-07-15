@@ -1,0 +1,11 @@
+# Personal Time Tracker — Python dependencies
+# Install with:  python -m pip install -r requirements.txt
+#
+# tkinter and sqlite3 are part of the Python standard library, so they are not
+# listed here. Versions are pinned to what this app was built and tested with.
+
+customtkinter==6.0.0   # modern-looking widgets on top of Tkinter
+matplotlib==3.10.7     # the graphs
+pandas==2.3.3          # building the Excel/CSV exports
+openpyxl==3.1.5        # the engine that writes .xlsx files
+pillow==12.0.0         # image support used by CustomTkinter
