@@ -146,6 +146,21 @@ class MultiModeServiceTests(unittest.TestCase):
         self.assertEqual(len(score.scored_items), 2)
         self.assertAlmostEqual(score.average_pct, 75.0)
 
+    def test_today_score_uses_category_weights(self) -> None:
+        date = "2026-07-15"
+        checkoff_id = self._create_checkoff()
+        counter_id = self._create_counter()
+        self.ctx.daily_progress_service.toggle(checkoff_id, date)
+        self.ctx.daily_progress_service.set_amount(counter_id, date, 5)
+
+        counter = self.ctx.category_service.get(counter_id)
+        counter.score_weight = 3
+        ok, message, _ = self.ctx.category_service.update(counter)
+        self.assertTrue(ok, message)
+
+        score = self.ctx.daily_progress_service.score(date)
+        self.assertAlmostEqual(score.average_pct, (100 + 50 * 3) / 4)
+
     def test_history_locks_mode_and_blocks_deletion(self) -> None:
         category_id = self._create_checkoff()
         self.ctx.daily_progress_service.toggle(category_id, "2026-07-15")

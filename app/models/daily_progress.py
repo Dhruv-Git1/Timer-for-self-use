@@ -62,7 +62,7 @@ class DailyScoreItem:
 
 @dataclass
 class DailyScore:
-    """All daily category progress plus their equal-weight average score."""
+    """All daily category progress plus their weighted average score."""
 
     date: str
     items: List[DailyScoreItem] = field(default_factory=list)
@@ -73,13 +73,14 @@ class DailyScore:
 
     @property
     def average_pct(self) -> float:
-        """The weighted average completion across every included category —
-        a category with weight 2 counts twice as much as one with weight 1."""
+        """The weighted completion average across included categories."""
         scored = self.scored_items
-        total_weight = sum(item.weight for item in scored)
-        if total_weight <= 0:
+        if not scored:
             return 0.0
-        return sum(item.completion_pct * item.weight for item in scored) / total_weight
+        total_weight = sum(max(1, item.weight) for item in scored)
+        return sum(
+            item.completion_pct * max(1, item.weight) for item in scored
+        ) / total_weight
 
     @property
     def has_scored_categories(self) -> bool:

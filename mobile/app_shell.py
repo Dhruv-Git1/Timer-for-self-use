@@ -38,6 +38,12 @@ _MORE_ITEMS = [
     ("Settings", ft.Icons.SETTINGS, settings_screen.build),
 ]
 
+_MORE_GROUPS = [
+    ("Review", _MORE_ITEMS[:4]),
+    ("Organize", _MORE_ITEMS[4:6]),
+    ("App", _MORE_ITEMS[6:]),
+]
+
 
 class AppShell:
     """Owns the one View, the NavigationBar, and the swappable body."""
@@ -46,6 +52,8 @@ class AppShell:
         self.page = page
         self.ctx = get_context()
         self.body = ft.Container(expand=True, padding=16)
+        self._current_tab = "timer"
+        self._more_detail_open = False
 
         self.nav_bar = ft.NavigationBar(
             selected_index=0,
@@ -66,11 +74,13 @@ class AppShell:
             bgcolor=theme.BG,
             padding=0,
             spacing=0,
+            on_confirm_pop=self._confirm_back,
             navigation_bar=self.nav_bar,
             controls=[self.body],
         )
 
         page.views.append(self.view)
+        page.on_view_pop = self._on_view_pop
         self._show_tab("timer")
 
     def _on_nav_change(self, e: ft.ControlEvent) -> None:
@@ -78,6 +88,12 @@ class AppShell:
         self._show_tab(key)
 
     def _show_tab(self, key: str) -> None:
+        self._current_tab = key
+        self._more_detail_open = False
+        self.nav_bar.selected_index = next(
+            index for index, (tab_key, _label, _icon) in enumerate(_TABS)
+            if tab_key == key
+        )
         if key == "timer":
             content = timer_screen.build(self.page, self.ctx)
         elif key == "home":
@@ -93,31 +109,56 @@ class AppShell:
         self.page.update()
 
     def _build_more_list(self) -> ft.Control:
-        rows = []
-        for label, icon, builder in _MORE_ITEMS:
-            rows.append(
-                ft.Container(
-                    padding=16, border_radius=12, bgcolor=theme.CARD,
-                    border=ft.Border.all(1, theme.CARD_BORDER),
-                    content=ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Row(controls=[
-                                ft.Icon(icon, color=theme.MUTED_TEXT, size=20),
-                                ft.Text(label, size=15, color=theme.HEADLINE),
-                            ]),
-                            ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.MONO_LABEL, size=18),
-                        ],
-                    ),
-                    on_click=lambda e, l=label, b=builder: self._open_more_item(l, b),
+        rows: list[ft.Control] = [theme.display("More", size=28)]
+        for group_label, items in _MORE_GROUPS:
+            rows.append(theme.section_label(group_label))
+            for label, icon, builder in items:
+                rows.append(
+                    ft.Container(
+                        padding=16, border_radius=12, bgcolor=theme.CARD,
+                        border=ft.Border.all(1, theme.CARD_BORDER),
+                        ink=True,
+                        content=ft.Row(
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            controls=[
+                                ft.Row(controls=[
+                                    ft.Icon(icon, color=theme.KICKER_RED, size=20),
+                                    ft.Text(label, size=15, color=theme.HEADLINE),
+                                ]),
+                                ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.MONO_LABEL, size=18),
+                            ],
+                        ),
+                        on_click=lambda e, l=label, b=builder: self._open_more_item(l, b),
+                    )
                 )
-            )
-        return ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, spacing=8, controls=rows)
+        return ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, spacing=10, controls=rows)
 
     def _open_more_item(self, label: str, builder) -> None:
+        self._current_tab = "more"
+        self._more_detail_open = True
+        self.nav_bar.selected_index = next(
+            index for index, (tab_key, _label, _icon) in enumerate(_TABS)
+            if tab_key == "more"
+        )
         if builder is not None:
             content = builder(self.page, self.ctx)
         else:
             content = placeholder_screen.build(label, "Coming in a future milestone.")
         self.body.content = screen_enter(content, self.page)
         self.page.update()
+
+    def _return_from_back(self) -> None:
+        """Keep the sole root View alive and navigate inside the app instead."""
+        if self._more_detail_open:
+            self._show_tab("more")
+        elif self._current_tab != "timer":
+            self._show_tab("timer")
+
+    async def _confirm_back(self, _event: ft.ControlEvent) -> None:
+        """Cancel Android's root-view pop so it cannot leave a black screen."""
+        self._return_from_back()
+        await self.view.confirm_pop(False)
+
+    def _on_view_pop(self, _event: ft.ViewPopEvent) -> None:
+        """Fallback for platforms that dispatch a view-pop directly."""
+        self._return_from_back()

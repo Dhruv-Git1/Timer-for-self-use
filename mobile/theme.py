@@ -27,6 +27,12 @@ ACCENT_HOVER = "#B3141D"
 ACCENT_DEEP = "#8A1219"  # dark end of accent gradients / pressed states
 ACCENT_GLOW = "#5A1A1F"  # base color for the (sparing) glow shadows
 KICKER_RED = "#FF4655"  # brighter red for small tracked labels over imagery
+FLAME = "#FF7A1A"       # warm secondary emphasis for achievement metrics
+GOLD = "#FFB020"        # celebratory / streak emphasis
+
+# Use these for app-level metrics. Category-specific colors stay reserved for
+# dots and progress that identify a particular task.
+MOTIVATION_ACCENTS = (ACCENT, KICKER_RED, FLAME, GOLD)
 
 BG = "#0A0A0C"
 CARD = "#141418"

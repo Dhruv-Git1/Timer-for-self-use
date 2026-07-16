@@ -36,12 +36,12 @@ def build(page: ft.Page, ctx) -> ft.Control:
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=18,
         controls=[
             theme.display("Graphs", size=28),
-            _section("Daily Productive Hours (14 days)", charts.line_chart(daily, "#3B82F6")),
+            _section("Daily Productive Hours (14 days)", charts.line_chart(daily, theme.KICKER_RED)),
             _section("Weekly Productivity (8 weeks)", charts.bar_chart(weekly, theme.ACCENT)),
             _section("Monthly Totals (6 months)", charts.bar_chart(monthly, "#10B981")),
             _section("Category Distribution (30 days)", charts.pie_chart(pie)),
             _section("Productivity Trend (30 days)",
-                    charts.line_chart(trend, theme.ACCENT, extra_lines=[(moving_avg, "#F59E0B")])),
-            _section("Streak History (60 days)", charts.line_chart(streak, "#2E9E5B")),
+                    charts.line_chart(trend, theme.ACCENT, extra_lines=[(moving_avg, theme.FLAME)])),
+            _section("Streak History (60 days)", charts.line_chart(streak, theme.GOLD)),
         ],
     )

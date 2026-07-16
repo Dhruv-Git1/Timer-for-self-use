@@ -30,10 +30,10 @@ def build(page: ft.Page, ctx) -> ft.Control:
     cards = ft.ResponsiveRow(
         controls=[
             stat_card("Today", summary.productive_label, "productive", theme.ACCENT),
-            stat_card("Streak", str(summary.current_streak), streak_word, "#E0A100"),
-            stat_card("Sessions", str(summary.session_count), "logged today", "#3B82F6"),
+            stat_card("Streak", str(summary.current_streak), streak_word, theme.GOLD),
+            stat_card("Sessions", str(summary.session_count), "logged today", theme.KICKER_RED),
             stat_card("This Week", time_utils.fmt_duration(week.total_productive_minutes),
-                      "productive", "#2E9E5B"),
+                      "productive", theme.FLAME),
         ],
     )
 
@@ -41,8 +41,30 @@ def build(page: ft.Page, ctx) -> ft.Control:
     goal_rows: list[ft.Control] = []
     progress_bars: list[ft.ProgressBar] = []
     if not goals:
-        goal_rows.append(ft.Text("No daily goals set yet — set them on the Timer screen.",
-                                  size=12, color=theme.MUTED_TEXT))
+        goal_rows.append(
+            ft.Container(
+                padding=12,
+                border_radius=10,
+                bgcolor=theme.NEUTRAL_BTN,
+                content=ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.FLAG_OUTLINED, color=theme.FLAME, size=20),
+                        ft.Column(
+                            expand=True,
+                            spacing=2,
+                            controls=[
+                                ft.Text("Set your first target", size=13, color=theme.HEADLINE),
+                                ft.Text(
+                                    "Open Timer and set a daily goal to start building momentum.",
+                                    size=11,
+                                    color=theme.MUTED_TEXT,
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            )
+        )
     for prog in goals:
         bar = fury_progress(prog.completion_pct / 100, color=theme.ACCENT)
         progress_bars.append(bar)

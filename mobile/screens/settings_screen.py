@@ -13,22 +13,27 @@ import flet as ft
 from mobile import theme
 from mobile.widgets.fury import fury_button
 
-_THEMES = ["Dark", "Light", "System"]
-_THEME_MODES = {"Dark": ft.ThemeMode.DARK, "Light": ft.ThemeMode.LIGHT, "System": ft.ThemeMode.SYSTEM}
-
 
 def build(page: ft.Page, ctx) -> ft.Control:
     status_text = ft.Text("", size=12, color=theme.MUTED_TEXT)
-    theme_row = ft.Row(spacing=6)
     score_column = ft.Column(spacing=8)
 
     def _toggle_score_inclusion(category, included: bool) -> None:
         category.include_in_daily_score = included
         ctx.category_service.update(category)
+        _refresh_score_section()
+        page.update()
 
-    def _set_score_weight(category, weight_str: str) -> None:
-        category.score_weight = int(weight_str)
-        ctx.category_service.update(category)
+    def _set_score_weight(category, value: str | None) -> None:
+        if value is None:
+            return
+        previous_weight = category.score_weight
+        category.score_weight = int(value)
+        ok, _message, _ = ctx.category_service.update(category)
+        if not ok:
+            category.score_weight = previous_weight
+        _refresh_score_section()
+        page.update()
 
     def _refresh_score_section() -> None:
         score_column.controls.clear()
@@ -41,43 +46,72 @@ def build(page: ft.Page, ctx) -> ft.Control:
             return
         for category in scoreable:
             score_column.controls.append(
-                ft.Row(controls=[
-                    ft.Icon(ft.Icons.CIRCLE, size=11, color=category.color),
-                    ft.Text(category.name, size=13, color=theme.HEADLINE, expand=True),
-                    ft.Dropdown(
-                        value=str(category.score_weight),
-                        options=[ft.DropdownOption(key=str(w), text=f"{w}x") for w in range(1, 6)],
-                        width=68,
-                        on_select=lambda e, c=category: _set_score_weight(c, e.control.value),
+                theme.card(
+                    ft.Column(
+                        spacing=6,
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    ft.Icon(
+                                        ft.Icons.CIRCLE,
+                                        size=11,
+                                        color=category.color,
+                                    ),
+                                    ft.Column(
+                                        expand=True,
+                                        spacing=1,
+                                        controls=[
+                                            ft.Text(
+                                                category.name,
+                                                size=13,
+                                                color=theme.HEADLINE,
+                                            ),
+                                            ft.Text(
+                                                f"Weight {category.score_weight}\u00d7 \u2014 counts "
+                                                f"{category.score_weight} share"
+                                                f"{'s' if category.score_weight != 1 else ''} "
+                                                "in today's score",
+                                                size=11,
+                                                color=theme.MUTED_TEXT,
+                                            ),
+                                        ],
+                                    ),
+                                    ft.Switch(
+                                        value=category.include_in_daily_score,
+                                        active_color=theme.ACCENT,
+                                        on_change=lambda e, c=category: _toggle_score_inclusion(
+                                            c, e.control.value
+                                        ),
+                                    ),
+                                ]
+                            ),
+                            ft.Row(
+                                alignment=ft.MainAxisAlignment.END,
+                                controls=[
+                                    ft.Dropdown(
+                                        label="Score weight",
+                                        value=str(category.score_weight),
+                                        width=145,
+                                        options=[
+                                            ft.DropdownOption(
+                                                key=str(weight), text=f"{weight}\u00d7"
+                                            )
+                                            for weight in range(1, 6)
+                                        ],
+                                        on_select=lambda e, c=category: _set_score_weight(
+                                            c, e.control.value
+                                        ),
+                                    ),
+                                ],
+                            ),
+                        ],
                     ),
-                    ft.Switch(
-                        value=category.include_in_daily_score,
-                        active_color=theme.ACCENT,
-                        on_change=lambda e, c=category: _toggle_score_inclusion(c, e.control.value),
-                    ),
-                ])
+                    padding=12,
+                    radius=10,
+                )
             )
 
     _refresh_score_section()
-
-    def _set_theme(mode: str) -> None:
-        ctx.set_setting("theme", mode.lower())
-        for btn in theme_row.controls:
-            btn.bgcolor = theme.ACCENT if btn.data == mode else theme.NEUTRAL_BTN
-        page.theme_mode = _THEME_MODES[mode]
-        page.update()
-
-    current_theme = ctx.get_setting("theme", "dark").capitalize()
-    for mode in _THEMES:
-        theme_row.controls.append(
-            ft.Container(
-                data=mode, padding=ft.Padding.symmetric(vertical=8, horizontal=16),
-                border_radius=8, bgcolor=theme.ACCENT if mode == current_theme else theme.NEUTRAL_BTN,
-                content=theme.tracked(mode.upper(), size=12, color=theme.HEADLINE,
-                                       family=theme.MONO_FAMILY_SEMIBOLD, spacing=0.6),
-                on_click=lambda e, m=mode: _set_theme(m),
-            )
-        )
 
     def _export(fmt: str) -> None:
         try:
@@ -93,16 +127,38 @@ def build(page: ft.Page, ctx) -> ft.Control:
             theme.display("Settings", size=28),
 
             theme.section_label("Appearance"),
-            theme_row,
+            theme.card(
+                ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.NIGHTLIGHT_ROUND, color=theme.KICKER_RED, size=22),
+                        ft.Column(
+                            spacing=2,
+                            controls=[
+                                theme.tracked(
+                                    "FOCUS DARK",
+                                    size=12,
+                                    color=theme.HEADLINE,
+                                    family=theme.MONO_FAMILY_SEMIBOLD,
+                                    spacing=0.8,
+                                ),
+                                ft.Text(
+                                    "The high-contrast study theme is active everywhere.",
+                                    size=11,
+                                    color=theme.MUTED_TEXT,
+                                ),
+                            ],
+                        ),
+                    ]
+                ),
+                padding=14,
+            ),
 
             theme.section_label("Today's Score"),
             ft.Text(
-                "Today's score is a weighted average: each category below is "
+                "Today's score is a weighted average. Each included category is "
                 "0-100% complete toward its own daily goal (time, check-off, or "
-                "counter), then combined using the weight next to it — a 3x "
-                "category counts 3 times as much as a 1x one. Turn a category "
-                "off to leave it out of the score entirely; nothing else about "
-                "it changes.",
+                "counter); a weight of 2\u00d7 counts twice as much as a weight of 1\u00d7. "
+                "Turn a category off to leave it out of the score.",
                 size=12, color=theme.MUTED_TEXT,
             ),
             score_column,

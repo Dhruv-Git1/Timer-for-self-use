@@ -13,6 +13,7 @@ import flet as ft
 
 from app.utils import time_utils
 from mobile import theme
+from mobile.widgets.date_navigator import date_navigator
 from mobile.widgets.fury import fury_progress
 from mobile.widgets.stat_card import stat_card
 
@@ -73,17 +74,17 @@ def build(page: ft.Page, ctx) -> ft.Control:
 
         cards_row.controls = [
             stat_card("Productive", hours(stats.total_productive_minutes), accent=theme.ACCENT),
-            stat_card("Recorded", hours(stats.total_recorded_minutes), accent="#3B82F6"),
-            stat_card("Active Days", str(stats.active_days), accent="#14B8A6"),
-            stat_card("Sessions", str(stats.session_count), accent="#EC4899"),
+            stat_card("Recorded", hours(stats.total_recorded_minutes), accent=theme.KICKER_RED),
+            stat_card("Active Days", str(stats.active_days), accent=theme.FLAME),
+            stat_card("Sessions", str(stats.session_count), accent=theme.GOLD),
             stat_card("Avg Session", hours(stats.avg_session_minutes) if stats.session_count else "—",
-                     accent="#8B5CF6"),
-            stat_card("Avg Start", stats.avg_start_time, accent="#F59E0B"),
+                     accent=theme.ACCENT),
+            stat_card("Avg Start", stats.avg_start_time, accent=theme.KICKER_RED),
             stat_card("Longest", hours(stats.longest_session_minutes) if stats.longest_session_minutes else "—",
-                     accent="#EF4444"),
+                     accent=theme.FLAME),
             stat_card("Avg/Active Day",
                      hours(stats.avg_productive_minutes_per_active_day) if stats.active_days else "—",
-                     accent="#2E9E5B"),
+                     accent=theme.GOLD),
         ]
 
         info_text.value = (f"🔥 Streak: {stats.current_streak}d   🏆 Longest: {stats.longest_streak}d   "
@@ -127,13 +128,10 @@ def build(page: ft.Page, ctx) -> ft.Control:
 
     _refresh()
 
-    nav = ft.Row(
-        alignment=ft.MainAxisAlignment.CENTER, spacing=6,
-        controls=[
-            ft.IconButton(icon=ft.Icons.CHEVRON_LEFT, on_click=lambda e: _step(-1)),
-            period_label,
-            ft.IconButton(icon=ft.Icons.CHEVRON_RIGHT, on_click=lambda e: _step(1)),
-        ],
+    nav = date_navigator(
+        period_label,
+        lambda e: _step(-1),
+        lambda e: _step(1),
     )
 
     return ft.Column(

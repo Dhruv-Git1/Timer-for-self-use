@@ -19,6 +19,7 @@ from mobile import theme
 from mobile.screens import categories_screen
 from mobile.widgets.fury import fury_button, fury_progress
 from mobile.widgets.hero import COMPACT_HEIGHT, hero_banner
+from mobile.widgets.sheets import dismiss_sheet, form_sheet, show_sheet
 
 _PULSE_PERIOD = 2.6
 _TICK_INTERVAL = 0.2
@@ -70,20 +71,35 @@ def build(page: ft.Page, ctx) -> ft.Control:
         ),
     )
 
-    score_value = theme.number("—", size=36, color=theme.ACCENT)
+    score_value = theme.number("—", size=42, color=theme.ACCENT)
     score_subtitle = ft.Text("", size=11, color=theme.MUTED_TEXT)
     score_bar = fury_progress(0, color=theme.ACCENT, animate_in=False)
     score_card = theme.card(
-        ft.Column(
-            spacing=6,
+        ft.Row(
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
-                theme.section_label("Today's score"),
-                score_value,
-                score_subtitle,
-                score_bar,
+                ft.Column(
+                    tight=True,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        score_value,
+                        theme.section_label("Score"),
+                    ],
+                ),
+                ft.Container(width=1, height=48, bgcolor=theme.CARD_BORDER),
+                ft.Column(
+                    expand=True,
+                    spacing=5,
+                    controls=[
+                        theme.section_label("Today's mission"),
+                        score_subtitle,
+                        score_bar,
+                    ],
+                ),
             ],
         ),
-        padding=16,
+        padding=14,
+        radius=12,
     )
 
     goals_column = ft.Column(spacing=8)
@@ -280,22 +296,22 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 page.update()
                 return
             ctx.daily_progress_service.set_amount(category.id, today, int(text))
-            page.pop_dialog()
+            dismiss_sheet(page, sheet)
             _refresh_all()
 
-        page.show_dialog(
-            ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"Set {category.name}"),
-                content=ft.Column(
-                    tight=True, spacing=8, width=280, controls=[amount_field, error_text]
-                ),
-                actions=[
-                    ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
-                    ft.Button("Save", on_click=_save_amount),
-                ],
-            )
+        def _cancel_amount(e=None) -> None:
+            dismiss_sheet(page, sheet)
+
+        sheet = form_sheet(
+            f"Set {category.name}",
+            ft.Column(spacing=10, controls=[amount_field, error_text]),
+            [
+                ft.TextButton("Cancel", on_click=_cancel_amount),
+                fury_button("Save", kind="primary", on_click=_save_amount),
+            ],
+            _cancel_amount,
         )
+        show_sheet(page, sheet)
 
     def _refresh_score_and_checkins() -> None:
         today = time_utils.today_str()
@@ -303,15 +319,16 @@ def build(page: ft.Page, ctx) -> ft.Control:
         if score.has_scored_categories:
             score_value.value = _score_label(score.average_pct)
             count = len(score.scored_items)
+            total_weight = sum(item.weight for item in score.scored_items)
             score_subtitle.value = (
-                f"Equal average across {count} included categor"
-                f"{'y' if count == 1 else 'ies'}"
+                f"{count} goal{'s' if count != 1 else ''} \u00b7 "
+                f"{total_weight}\u00d7 total weight"
             )
             score_bar.value = score.average_pct / 100
             score_bar.data = score_bar.value
         else:
             score_value.value = "—"
-            score_subtitle.value = "Enable ‘Include in Today's score’ on a goal category."
+            score_subtitle.value = "Include a goal category to calculate today's score."
             score_bar.value = 0
             score_bar.data = 0
 
@@ -322,10 +339,32 @@ def build(page: ft.Page, ctx) -> ft.Control:
         ]
         if not categories:
             checkins_column.controls.append(
-                ft.Text(
-                    "No daily check-ins yet — use Manage categories to add one.",
-                    size=12,
-                    color=theme.MUTED_TEXT,
+                theme.card(
+                    ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, color=theme.FLAME, size=22),
+                            ft.Column(
+                                expand=True,
+                                spacing=2,
+                                controls=[
+                                    ft.Text("Add a daily win", size=13, color=theme.HEADLINE),
+                                    ft.Text(
+                                        "Track habits such as water, fruit, or a daily check-off.",
+                                        size=11,
+                                        color=theme.MUTED_TEXT,
+                                    ),
+                                ],
+                            ),
+                            ft.TextButton(
+                                "Add",
+                                on_click=lambda e: categories_screen.show_manager(
+                                    page, ctx, on_changed=_on_categories_changed
+                                ),
+                            ),
+                        ]
+                    ),
+                    padding=14,
+                    radius=10,
                 )
             )
             return
@@ -400,10 +439,32 @@ def build(page: ft.Page, ctx) -> ft.Control:
         live = ctx.timer_service.current_state()
         if not categories:
             grid_column.controls.append(
-                ft.Text(
-                    "No Timer categories available. Open Manage categories to add one.",
-                    size=12,
-                    color=theme.MUTED_TEXT,
+                theme.card(
+                    ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.TIMER_OUTLINED, color=theme.ACCENT, size=22),
+                            ft.Column(
+                                expand=True,
+                                spacing=2,
+                                controls=[
+                                    ft.Text("Create your first timer", size=13, color=theme.HEADLINE),
+                                    ft.Text(
+                                        "Choose a focus category, set a target, then start your streak.",
+                                        size=11,
+                                        color=theme.MUTED_TEXT,
+                                    ),
+                                ],
+                            ),
+                            ft.TextButton(
+                                "Create",
+                                on_click=lambda e: categories_screen.show_manager(
+                                    page, ctx, on_changed=_on_categories_changed
+                                ),
+                            ),
+                        ]
+                    ),
+                    padding=14,
+                    radius=10,
                 )
             )
             return
@@ -514,20 +575,20 @@ def build(page: ft.Page, ctx) -> ft.Control:
         controls=[
             hero_banner(
                 page,
-                kicker="Live Session",
-                headline="Timer",
+                kicker="Timer / Live Session",
+                headline="REVENGE",
                 height=COMPACT_HEIGHT,
                 # Nudge the cover crop down so the hero shows the character's
                 # shoulders/chest as well as the face.
                 image_align=ft.Alignment(0, 0.34),
             ),
             clock_card,
+            categories_header,
+            grid_column,
             score_card,
             theme.section_label("Today's check-ins"),
             checkins_column,
             goals_header,
             goals_column,
-            categories_header,
-            grid_column,
         ],
     )

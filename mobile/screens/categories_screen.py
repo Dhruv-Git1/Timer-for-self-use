@@ -15,6 +15,8 @@ import config
 from app.models.category import TRACKING_CHECKOFF, TRACKING_COUNTER, TRACKING_TIMER
 from app.utils import validators
 from mobile import theme
+from mobile.widgets.fury import fury_button
+from mobile.widgets.sheets import dismiss_sheet, form_sheet, show_sheet
 
 ChangedCallback = Optional[Callable[[], None]]
 
@@ -260,7 +262,7 @@ def build_manager(
                 error_text.value = msg
                 page.update()
                 return
-            page.pop_dialog()
+            dismiss_sheet(page, sheet)
             _changed()
 
         def _archive(e=None) -> None:
@@ -269,7 +271,7 @@ def build_manager(
                 page.update()
                 return
             ctx.category_service.set_archived(category.id, not category.is_archived)
-            page.pop_dialog()
+            dismiss_sheet(page, sheet)
             _changed()
 
         def _confirm_delete(e=None) -> None:
@@ -277,7 +279,7 @@ def build_manager(
                 error_text.value = "Stop the running timer before deleting this category."
                 page.update()
                 return
-            page.pop_dialog()
+            dismiss_sheet(page, sheet)
 
             def _do_delete(e2=None) -> None:
                 ok, msg, _ = ctx.category_service.delete(category.id)
@@ -309,8 +311,8 @@ def build_manager(
             )
 
         actions = [
-            ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
-            ft.Button("Save", on_click=_save),
+            ft.TextButton("Cancel", on_click=lambda e: dismiss_sheet(page, sheet)),
+            fury_button("Save", kind="primary", on_click=_save),
         ]
         if category:
             actions.insert(
@@ -322,33 +324,31 @@ def build_manager(
             )
             actions.insert(0, ft.TextButton("Delete", on_click=_confirm_delete))
 
-        page.show_dialog(
-            ft.AlertDialog(
-                modal=True,
-                title=ft.Text("Edit category" if category else "Add category"),
-                content=ft.Column(
-                    tight=True,
-                    spacing=10,
-                    width=320,
-                    scroll=ft.ScrollMode.AUTO,
-                    controls=[
-                        name_field,
-                        ft.Text("Color", size=12, color=theme.MUTED_TEXT),
-                        swatch_row,
-                        mode_dropdown,
-                        lock_text,
-                        mode_help,
-                        productive_switch,
-                        minute_goal_field,
-                        count_goal_field,
-                        unit_field,
-                        score_switch,
-                        error_text,
-                    ],
-                ),
-                actions=actions,
-            )
+        sheet = form_sheet(
+            "Edit category" if category else "Add category",
+            ft.Column(
+                spacing=10,
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    name_field,
+                    ft.Text("Color", size=12, color=theme.MUTED_TEXT),
+                    swatch_row,
+                    mode_dropdown,
+                    lock_text,
+                    mode_help,
+                    productive_switch,
+                    minute_goal_field,
+                    count_goal_field,
+                    unit_field,
+                    score_switch,
+                    error_text,
+                ],
+            ),
+            actions,
+            lambda e: dismiss_sheet(page, sheet),
+            body_height=280,
         )
+        show_sheet(page, sheet)
 
     _refresh()
 

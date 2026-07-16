@@ -112,6 +112,8 @@ class CategoryService:
         )
         if not ok:
             return (False, msg, None)
+        if not isinstance(category.score_weight, int) or category.score_weight < 1:
+            return (False, "Score weight must be a whole number of at least 1.", None)
 
         existing = self.repo.get(category.id)
         if existing is None:

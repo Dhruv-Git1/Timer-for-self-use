@@ -1,6 +1,6 @@
 [project]
 name = "timetracker-mobile"
-version = "0.1.0"
+version = "0.1.1"
 description = "Personal Time Tracker & Productivity Dashboard — Android (Flet)"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,6 +12,7 @@ dependencies = [
 product = "Time Tracker"
 org = "com.timetracker"
 bundle_id = "com.timetracker.app"
+build_number = 2
 
 [tool.flet.app]
 module = "mobile_build_entry"
@@ -20,6 +21,7 @@ module = "mobile_build_entry"
 # unchanged). These are excluded so the APK never bundles your personal data,
 # the desktop-only code, or local build/test cruft.
 exclude = [
+    "build", "TimeTracker.apk",
     "data", "backups", "exports", "tests",
     ".git", ".github", "__pycache__",
     "flet_build.log", "flet_build2.log", "flet_stdout.log", "flet_stderr.log",

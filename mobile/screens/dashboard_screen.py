@@ -10,6 +10,7 @@ import flet as ft
 
 from app.utils import time_utils
 from mobile import theme
+from mobile.widgets.date_navigator import date_navigator
 from mobile.widgets.fury import fury_progress
 from mobile.widgets.stat_card import stat_card
 
@@ -46,9 +47,9 @@ def build(page: ft.Page, ctx) -> ft.Control:
 
         cards_row.controls = [
             stat_card("Productive", summary.productive_label, accent=theme.ACCENT),
-            stat_card("Recorded", summary.recorded_label, accent="#3B82F6"),
-            stat_card("Sessions", str(summary.session_count), accent="#EC4899"),
-            stat_card("Longest", summary.longest_session_label, accent="#8B5CF6"),
+            stat_card("Recorded", summary.recorded_label, accent=theme.KICKER_RED),
+            stat_card("Sessions", str(summary.session_count), accent=theme.FLAME),
+            stat_card("Longest", summary.longest_session_label, accent=theme.GOLD),
         ]
 
         table_column.controls.clear()
@@ -72,15 +73,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
 
     _refresh()
 
-    nav = ft.Row(
-        alignment=ft.MainAxisAlignment.CENTER, spacing=6,
-        controls=[
-            ft.IconButton(icon=ft.Icons.CHEVRON_LEFT, on_click=_prev),
-            date_label,
-            ft.IconButton(icon=ft.Icons.CHEVRON_RIGHT, on_click=_next),
-            ft.TextButton("Today", on_click=_today),
-        ],
-    )
+    nav = date_navigator(date_label, _prev, _next, _today)
 
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=14,

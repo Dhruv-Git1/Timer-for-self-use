@@ -11,7 +11,9 @@ import flet as ft
 
 from app.utils import time_utils, validators
 from mobile import theme
+from mobile.widgets.date_navigator import date_navigator
 from mobile.widgets.fury import fury_button
+from mobile.widgets.sheets import dismiss_sheet, form_sheet, show_sheet
 
 
 def build(page: ft.Page, ctx) -> ft.Control:
@@ -82,29 +84,36 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 error_text.value = msg
                 page.update()
                 return
-            page.pop_dialog()
+            dismiss_sheet(page, sheet)
             _refresh()
 
         def _cancel(e=None) -> None:
-            page.pop_dialog()
+            dismiss_sheet(page, sheet)
 
         def _delete(e=None) -> None:
             ctx.entry_service.delete_entry(entry.id)
-            page.pop_dialog()
+            dismiss_sheet(page, sheet)
             _refresh()
 
-        actions = [ft.TextButton("Cancel", on_click=_cancel), ft.Button("Save", on_click=_save)]
+        actions = [
+            ft.TextButton("Cancel", on_click=_cancel),
+            fury_button("Save", kind="primary", on_click=_save),
+        ]
         if entry:
             actions.insert(0, ft.TextButton("Delete", on_click=_delete))
 
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Edit entry" if entry else "Add entry"),
-            content=ft.Column(tight=True, spacing=10, width=320,
-                              controls=[cat_dropdown, start_field, end_field, notes_field, error_text]),
-            actions=actions,
+        sheet = form_sheet(
+            "Edit entry" if entry else "Add entry",
+            ft.Column(
+                spacing=12,
+                scroll=ft.ScrollMode.AUTO,
+                controls=[cat_dropdown, start_field, end_field, notes_field, error_text],
+            ),
+            actions,
+            _cancel,
+            body_height=310,
         )
-        page.show_dialog(dialog)
+        show_sheet(page, sheet)
 
     def _refresh() -> None:
         weekday = time_utils.weekday_name(state["date"])
@@ -116,7 +125,21 @@ def build(page: ft.Page, ctx) -> ft.Control:
         list_column.controls.clear()
         if not entries:
             list_column.controls.append(
-                ft.Text("No entries logged for this day.", size=12, color=theme.MUTED_TEXT)
+                theme.card(
+                    ft.Column(
+                        spacing=5,
+                        controls=[
+                            ft.Icon(ft.Icons.PLAY_CIRCLE_OUTLINED, color=theme.ACCENT, size=24),
+                            ft.Text("Nothing logged yet", size=14, color=theme.HEADLINE),
+                            ft.Text(
+                                "Start a Timer session or add an entry to build today's record.",
+                                size=12,
+                                color=theme.MUTED_TEXT,
+                            ),
+                        ],
+                    ),
+                    padding=16,
+                )
             )
         for entry in entries:
             warn = "  ⚠" if entry.id in overlapping else ""
@@ -137,15 +160,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
 
     _refresh()
 
-    nav = ft.Row(
-        alignment=ft.MainAxisAlignment.CENTER, spacing=6,
-        controls=[
-            ft.IconButton(icon=ft.Icons.CHEVRON_LEFT, on_click=_prev),
-            date_label,
-            ft.IconButton(icon=ft.Icons.CHEVRON_RIGHT, on_click=_next),
-            ft.TextButton("Today", on_click=_today),
-        ],
-    )
+    nav = date_navigator(date_label, _prev, _next, _today)
     actions_row = ft.Row(controls=[
         fury_button("Add entry", icon=ft.Icons.ADD, kind="primary", on_click=lambda e: _open_form()),
         ft.TextButton("Duplicate previous day", on_click=_duplicate_prev),
