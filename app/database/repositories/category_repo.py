@@ -138,9 +138,10 @@ class CategoryRepository(BaseRepository):
     def delete(self, category_id: int) -> None:
         """Hard-delete a category.
 
-        Only safe when the category has no entries; the ON DELETE RESTRICT rule
-        in the schema will raise an IntegrityError otherwise, which the service
-        layer turns into a friendly "archive instead" message.
+        Only safe when the category has neither entries nor daily-progress
+        history; the ON DELETE RESTRICT rules in the schema raise an
+        IntegrityError otherwise, which the service layer turns into a friendly
+        "archive instead" message.
         """
         self.conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
         self.conn.commit()

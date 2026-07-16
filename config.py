@@ -104,23 +104,16 @@ CHART_PALETTE = [
 # --------------------------------------------------------------------------- #
 # Default categories created on first run
 # --------------------------------------------------------------------------- #
-# Each tuple is (name, is_productive, daily_target_minutes). The productive flag
-# follows the rule we agreed on: Sleep, Entertainment, Travel and Busy Work are
-# recorded but do NOT count toward productive time or the daily goal.
+# Each tuple is (name, is_productive, daily_target_minutes). These are used
+# only when a database is first seeded; existing users keep every category they
+# have already created.
 DEFAULT_CATEGORIES = [
     # name,          productive?, daily target (minutes)
     ("Study",         True,  480),   # 8 h
-    ("Research",      True,  120),   # 2 h
-    ("Reading",       True,   60),   # 1 h
     ("Writing",       True,   60),
     ("Coding",        True,  120),
-    ("Exercise",      True,   45),
-    ("Entertainment", False,   0),
-    ("Travel",        False,   0),
-    ("Busy Work",     False,   0),
-    ("Sleep",         False,   0),
 ]
 
 # Default value stored in app_meta the first time the app starts.
 DEFAULT_THEME = "dark"          # "dark", "light", or "system"
-SCHEMA_VERSION = "2"            # bumped when the schema changes, for migrations
+SCHEMA_VERSION = "3"            # bumped when the schema changes, for migrations

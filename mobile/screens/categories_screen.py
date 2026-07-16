@@ -275,28 +275,40 @@ def build_manager(
             _changed()
 
         def _confirm_delete(e=None) -> None:
-            if is_active_category:
+            active = ctx.timer_service.current_state()
+            if active.is_active and active.category_id == category.id:
                 error_text.value = "Stop the running timer before deleting this category."
                 page.update()
                 return
-            dismiss_sheet(page, sheet)
+
+            dialog_open = True
+            deleting = False
+
+            def _close_confirmation() -> None:
+                nonlocal dialog_open
+                if dialog_open:
+                    dialog_open = False
+                    page.pop_dialog()
 
             def _do_delete(e2=None) -> None:
-                ok, msg, _ = ctx.category_service.delete(category.id)
-                page.pop_dialog()
+                nonlocal deleting
+                if deleting:
+                    return
+                deleting = True
+                try:
+                    ok, msg, _ = ctx.category_service.delete(category.id)
+                except Exception:  # noqa: BLE001 - keep UI alive on unexpected failures
+                    ok = False
+                    msg = "Couldn't delete this category. Please try again."
+                _close_confirmation()
                 if ok:
+                    dismiss_sheet(page, sheet)
                     _changed()
                 else:
-                    page.show_dialog(
-                        ft.AlertDialog(
-                            modal=True,
-                            title=ft.Text("Can't delete"),
-                            content=ft.Text(msg),
-                            actions=[
-                                ft.TextButton("OK", on_click=lambda e: page.pop_dialog())
-                            ],
-                        )
-                    )
+                    # The edit sheet stays open, so an error can be shown
+                    # without pushing a second dialog while the first dismisses.
+                    error_text.value = msg
+                    page.update()
 
             page.show_dialog(
                 ft.AlertDialog(
@@ -304,7 +316,7 @@ def build_manager(
                     title=ft.Text("Delete category?"),
                     content=ft.Text(f'Delete "{category.name}"? This cannot be undone.'),
                     actions=[
-                        ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
+                        ft.TextButton("Cancel", on_click=lambda e: _close_confirmation()),
                         ft.TextButton("Delete", on_click=_do_delete),
                     ],
                 )

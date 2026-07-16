@@ -12,6 +12,19 @@ from app.models.category import TRACKING_COUNTER
 from app.services.context import AppContext
 
 
+class DefaultCategorySeedTests(unittest.TestCase):
+    def test_new_database_seeds_only_the_three_requested_categories(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            ctx = AppContext(os.path.join(folder, "fresh.db"))
+            try:
+                self.assertEqual(
+                    [category.name for category in ctx.category_service.list_categories()],
+                    ["Study", "Writing", "Coding"],
+                )
+            finally:
+                ctx.close()
+
+
 class MigrationTests(unittest.TestCase):
     def test_v1_database_is_upgraded_without_losing_categories(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
@@ -52,13 +65,17 @@ class MigrationTests(unittest.TestCase):
             table = db.conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='daily_progress'"
             ).fetchone()
+            reflections = db.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='daily_reflections'"
+            ).fetchone()
 
             self.assertEqual(row["daily_target_minutes"], 90)
             self.assertEqual(row["tracking_mode"], "timer")
             self.assertEqual(row["daily_target_count"], 1)
             self.assertEqual(row["include_in_daily_score"], 1)
-            self.assertEqual(version, "2")
+            self.assertEqual(version, "3")
             self.assertIsNotNone(table)
+            self.assertIsNotNone(reflections)
             db.close()
 
 
@@ -177,6 +194,56 @@ class MultiModeServiceTests(unittest.TestCase):
         self.assertIn("Archive", message)
         ok, message, _ = self.ctx.category_service.set_archived(category_id, True)
         self.assertTrue(ok, message)
+
+    def test_empty_category_deletes_successfully(self) -> None:
+        category_id = self._create_checkoff("Temporary task")
+
+        ok, message, deleted_id = self.ctx.category_service.delete(category_id)
+
+        self.assertTrue(ok, message)
+        self.assertEqual(deleted_id, category_id)
+        self.assertIsNone(self.ctx.category_service.get(category_id))
+
+    def test_time_entry_history_requires_archiving(self) -> None:
+        ok, message, category_id = self.ctx.category_service.create(
+            "Logged work", "#EF4444", True, 60
+        )
+        self.assertTrue(ok, message)
+        ok, message, _ = self.ctx.entry_service.add_entry(
+            category_id, "2026-07-15", "09:00", "10:00"
+        )
+        self.assertTrue(ok, message)
+
+        ok, message, _ = self.ctx.category_service.delete(category_id)
+
+        self.assertFalse(ok)
+        self.assertIn("Archive", message)
+        self.assertIsNotNone(self.ctx.category_service.get(category_id))
+
+    def test_daily_progress_history_requires_archiving(self) -> None:
+        category_id = self._create_counter("Progress task")
+        self.ctx.daily_progress_service.set_amount(category_id, "2026-07-15", 3)
+
+        ok, message, _ = self.ctx.category_service.delete(category_id)
+
+        self.assertFalse(ok)
+        self.assertIn("progress", message)
+        self.assertIn("Archive", message)
+
+    def test_running_timer_category_cannot_be_deleted(self) -> None:
+        ok, message, category_id = self.ctx.category_service.create(
+            "Live timer", "#3B82F6", True, 60
+        )
+        self.assertTrue(ok, message)
+        self.ctx.timer_service.start(category_id)
+        try:
+            ok, message, _ = self.ctx.category_service.delete(category_id)
+        finally:
+            self.ctx.timer_service.discard()
+
+        self.assertFalse(ok)
+        self.assertIn("running timer", message)
+        self.assertIsNotNone(self.ctx.category_service.get(category_id))
 
     def test_time_entries_reject_non_timer_categories(self) -> None:
         counter_id = self._create_counter()

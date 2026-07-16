@@ -12,9 +12,11 @@ from __future__ import annotations
 from typing import Optional
 
 import config
+from app.services.ai_insights_service import AiInsightsService
 from app.database.connection import DatabaseManager
 from app.database.repositories.category_repo import CategoryRepository
 from app.database.repositories.daily_progress_repo import DailyProgressRepository
+from app.database.repositories.daily_reflection_repo import DailyReflectionRepository
 from app.database.repositories.entry_repo import EntryRepository
 from app.database.repositories.settings_repo import SettingsRepository
 from app.services.backup_service import BackupService
@@ -22,6 +24,7 @@ from app.services.calendar_service import CalendarService
 from app.services.category_service import CategoryService
 from app.services.dashboard_service import DashboardService
 from app.services.daily_progress_service import DailyProgressService
+from app.services.daily_reflection_service import DailyReflectionService
 from app.services.entry_service import EntryService
 from app.services.search_service import SearchService
 from app.services.stats_service import StatsService
@@ -41,6 +44,7 @@ class AppContext:
         # Repositories (the only classes that run SQL).
         self.category_repo = CategoryRepository(self.db)
         self.daily_progress_repo = DailyProgressRepository(self.db)
+        self.daily_reflection_repo = DailyReflectionRepository(self.db)
         self.entry_repo = EntryRepository(self.db)
         self.settings_repo = SettingsRepository(self.db)
 
@@ -48,12 +52,20 @@ class AppContext:
         # another: the streak service is built first because the dashboard and
         # statistics services use it.
         self.streak_service = StreakService(self.category_repo, self.entry_repo)
-        self.category_service = CategoryService(self.category_repo)
         self.entry_service = EntryService(self.entry_repo, self.category_repo)
         self.timer_service = TimerService(self.settings_repo, self.entry_service)
+
+        def active_timer_category_id() -> Optional[int]:
+            state = self.timer_service.current_state()
+            return state.category_id if state.is_active else None
+
+        self.category_service = CategoryService(
+            self.category_repo, active_timer_category_id
+        )
         self.daily_progress_service = DailyProgressService(
             self.daily_progress_repo, self.category_repo, self.entry_repo
         )
+        self.daily_reflection_service = DailyReflectionService(self.daily_reflection_repo)
         self.dashboard_service = DashboardService(
             self.category_repo, self.entry_repo, self.streak_service
         )
@@ -63,6 +75,12 @@ class AppContext:
         self.calendar_service = CalendarService(self.category_repo, self.entry_repo)
         self.search_service = SearchService(self.entry_repo)
         self.backup_service = BackupService(self.db, self.settings_repo)
+        self.ai_insights_service = AiInsightsService(
+            self.dashboard_service,
+            self.daily_progress_service,
+            self.daily_reflection_service,
+            self.stats_service,
+        )
         # Built lazily (see the export_service property below) — it pulls in
         # pandas, which desktop has but a packaged mobile build may not.
         self._export_service = None

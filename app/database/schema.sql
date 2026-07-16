@@ -96,6 +96,18 @@ CREATE TABLE IF NOT EXISTS daily_progress (
 CREATE INDEX IF NOT EXISTS idx_daily_progress_date ON daily_progress(log_date);
 
 -- --------------------------------------------------------------------------
+-- Daily reflections: the user's own explanation of what helped or hindered
+-- productivity. This is intentionally separate from time-entry notes so one
+-- reflection represents the whole day and remains easy to edit later.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS daily_reflections (
+    log_date   TEXT PRIMARY KEY,
+    notes      TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- --------------------------------------------------------------------------
 -- App metadata: a simple key/value store for settings that do not deserve
 -- their own table (theme choice, schema version, last-backup time, ...).
 -- --------------------------------------------------------------------------

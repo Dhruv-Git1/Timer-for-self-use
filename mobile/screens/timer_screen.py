@@ -11,7 +11,9 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+import shutil
 import time
+from pathlib import Path
 
 import flet as ft
 import flet_video as ftv
@@ -26,6 +28,15 @@ from mobile.widgets.sheets import dismiss_sheet, form_sheet, show_sheet
 
 _PULSE_PERIOD = 2.6
 _TICK_INTERVAL = 0.2
+GOAL_CELEBRATION_SETTING = "last_goal_celebration_date"
+GOAL_COMPLETION_VIDEO = "goal-complete.mp4"
+GOAL_COMPLETION_CACHE_DIR = "timetracker-celebration"
+GOAL_COMPLETION_VIDEO_CONFIGURATION = ftv.VideoConfiguration(
+    # Direct MediaCodec output avoids the emulator's failing EGL texture path
+    # while still using Android's native H.264 decoder on real phones.
+    output_driver="mediacodec_embed",
+    hardware_decoding_api="mediacodec",
+)
 
 
 def _pulse_shadow(color: str) -> ft.BoxShadow:
@@ -36,6 +47,76 @@ def _pulse_shadow(color: str) -> ft.BoxShadow:
 
 def _score_label(value: float) -> str:
     return f"{value:.1f}".rstrip("0").rstrip(".") + "%"
+
+
+def should_show_goal_celebration(
+    *,
+    initialized: bool,
+    was_complete: bool,
+    is_complete: bool,
+    last_celebration_date: str,
+    today: str,
+) -> bool:
+    """Return whether an incomplete-to-complete transition may celebrate."""
+    return (
+        initialized
+        and is_complete
+        and not was_complete
+        and last_celebration_date != today
+    )
+
+
+def reset_goal_celebration_state(ctx) -> None:
+    """Clear the one-per-day latch for isolated automated tests only.
+
+    This helper is deliberately not connected to the production UI.
+    """
+    ctx.set_setting(GOAL_CELEBRATION_SETTING, "")
+
+
+def is_video_completion_event(event) -> bool:
+    """Return whether flet-video has actually reached the end of a video.
+
+    The component reports its initial ``completed=false`` state through the
+    same callback as the final ``completed=true`` event.  Closing on either
+    state tears down the full-screen player as soon as it is created.
+    """
+    return str(getattr(event, "data", "")).strip().lower() in {"true", "1"}
+
+
+def goal_completion_video_resource() -> str:
+    """Return a file URI that Android's native player can read.
+
+    Flet bundles app assets separately from Flutter's own asset resolver, while
+    ``flet_video`` passes its resource straight to media_kit. A bare relative
+    filename therefore creates a player surface but does not give media_kit a
+    readable Android file. Copy this immutable bundled clip to the app-private
+    cache when possible and play the resulting file URI instead.
+    """
+    asset_dirs = [os.environ.get("FLET_ASSETS_DIR"), config.ASSETS_DIR]
+    source = next(
+        (
+            Path(directory) / GOAL_COMPLETION_VIDEO
+            for directory in asset_dirs
+            if directory and (Path(directory) / GOAL_COMPLETION_VIDEO).is_file()
+        ),
+        Path(config.ASSETS_DIR) / GOAL_COMPLETION_VIDEO,
+    )
+
+    cache_root = os.environ.get("FLET_APP_STORAGE_CACHE")
+    if cache_root and source.is_file():
+        try:
+            cached = Path(cache_root) / GOAL_COMPLETION_CACHE_DIR / GOAL_COMPLETION_VIDEO
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            if not cached.is_file() or cached.stat().st_size != source.stat().st_size:
+                shutil.copyfile(source, cached)
+            return cached.resolve().as_uri()
+        except OSError:
+            # A cache failure must not prevent a completed goal from being
+            # recorded; the bundled physical file remains a valid fallback.
+            pass
+
+    return source.resolve().as_uri()
 
 
 def build(page: ft.Page, ctx) -> ft.Control:
@@ -329,14 +410,13 @@ def build(page: ft.Page, ctx) -> ft.Control:
             expand=True,
             autoplay=True,
             controls=None,
+            configuration=GOAL_COMPLETION_VIDEO_CONFIGURATION,
                     # Fill the entire phone display; the source video is
                     # landscape, so its outer edges may be cropped on portrait
                     # devices rather than leaving letterbox bars.
-                    fit=ft.BoxFit.COVER,
+            fit=ft.BoxFit.COVER,
             playlist=[
-                ftv.VideoMedia(
-                    os.path.join(config.ASSETS_DIR, "goal-complete.mp4")
-                )
+                ftv.VideoMedia(goal_completion_video_resource())
             ],
         )
 
@@ -350,7 +430,11 @@ def build(page: ft.Page, ctx) -> ft.Control:
         def _dismiss(e=None) -> None:
             page.run_task(_stop_and_dismiss)
 
-        video.on_complete = _dismiss
+        def _on_video_complete(event) -> None:
+            if is_video_completion_event(event):
+                _dismiss(event)
+
+        video.on_complete = _on_video_complete
         sheet = ft.BottomSheet(
             bgcolor="#000000",
             dismissible=False,
@@ -412,12 +496,14 @@ def build(page: ft.Page, ctx) -> ft.Control:
         is_complete = _all_daily_goals_complete()
         if not celebration_state["initialized"]:
             celebration_state["initialized"] = True
-        elif (
-            is_complete
-            and not celebration_state["was_complete"]
-            and ctx.get_setting("last_goal_celebration_date") != today
+        elif should_show_goal_celebration(
+            initialized=celebration_state["initialized"],
+            was_complete=celebration_state["was_complete"],
+            is_complete=is_complete,
+            last_celebration_date=ctx.get_setting(GOAL_CELEBRATION_SETTING),
+            today=today,
         ):
-            ctx.set_setting("last_goal_celebration_date", today)
+            ctx.set_setting(GOAL_CELEBRATION_SETTING, today)
             _show_goal_celebration()
         celebration_state["was_complete"] = is_complete
 

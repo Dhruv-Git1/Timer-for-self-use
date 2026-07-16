@@ -6,6 +6,7 @@ import unittest
 from types import SimpleNamespace
 
 import flet as ft
+import flet_video as ftv
 
 from app.services.context import AppContext
 from mobile.screens import timer_screen
@@ -70,4 +71,84 @@ class TimerCelebrationTests(unittest.TestCase):
         celebration = page.overlay[0]
         self.assertIsInstance(celebration, ft.BottomSheet)
         self.assertTrue(celebration.fullscreen)
+        video = next(control for control in _walk(celebration) if isinstance(control, ftv.Video))
+        self.assertTrue(video.autoplay)
+        self.assertTrue(video.playlist[0].resource.startswith("file:///"))
+        self.assertTrue(video.playlist[0].resource.endswith("goal-complete.mp4"))
+        self.assertEqual(video.configuration.output_driver, "mediacodec_embed")
+        self.assertEqual(video.configuration.hardware_decoding_api, "mediacodec")
+        self.assertEqual(
+            self.ctx.get_setting(timer_screen.GOAL_CELEBRATION_SETTING),
+            timer_screen.time_utils.today_str(),
+        )
 
+        # Completing the same goals again today must not retrigger the clip.
+        checkoff.value = False
+        checkoff.on_change(SimpleNamespace(control=checkoff))
+        checkoff.value = True
+        checkoff.on_change(SimpleNamespace(control=checkoff))
+        self.assertEqual(len(page.overlay), 1)
+
+    def test_completion_still_celebrates_when_a_goal_is_excluded_from_score(self) -> None:
+        category = next(iter(self.ctx.category_service.list_categories()))
+        category.include_in_daily_score = False
+        ok, message, _ = self.ctx.category_service.update(category)
+        self.assertTrue(ok, message)
+
+        page = _PageStub()
+        screen = timer_screen.build(page, self.ctx)
+        checkoff = next(control for control in _walk(screen) if isinstance(control, ft.Checkbox))
+        checkoff.value = True
+        checkoff.on_change(SimpleNamespace(control=checkoff))
+
+        self.assertEqual(len(page.overlay), 1)
+
+    def test_celebration_transition_and_reset_helper_are_testable(self) -> None:
+        today = "2026-07-16"
+        self.assertFalse(
+            timer_screen.should_show_goal_celebration(
+                initialized=False,
+                was_complete=False,
+                is_complete=True,
+                last_celebration_date="",
+                today=today,
+            )
+        )
+        self.assertTrue(
+            timer_screen.should_show_goal_celebration(
+                initialized=True,
+                was_complete=False,
+                is_complete=True,
+                last_celebration_date="",
+                today=today,
+            )
+        )
+        self.assertFalse(
+            timer_screen.should_show_goal_celebration(
+                initialized=True,
+                was_complete=False,
+                is_complete=True,
+                last_celebration_date=today,
+                today=today,
+            )
+        )
+
+        self.ctx.set_setting(timer_screen.GOAL_CELEBRATION_SETTING, today)
+        timer_screen.reset_goal_celebration_state(self.ctx)
+        self.assertEqual(self.ctx.get_setting(timer_screen.GOAL_CELEBRATION_SETTING), "")
+
+    def test_video_completion_only_accepts_a_true_completed_state(self):
+        self.assertFalse(
+            timer_screen.is_video_completion_event(SimpleNamespace(data="false"))
+        )
+        self.assertFalse(
+            timer_screen.is_video_completion_event(SimpleNamespace(data=""))
+        )
+        self.assertTrue(
+            timer_screen.is_video_completion_event(SimpleNamespace(data="true"))
+        )
+
+    def test_video_resource_is_a_readable_file_uri(self):
+        resource = timer_screen.goal_completion_video_resource()
+        self.assertTrue(resource.startswith("file:///"))
+        self.assertTrue(resource.endswith("goal-complete.mp4"))

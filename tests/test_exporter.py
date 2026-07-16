@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import inspect
 import os
 import tempfile
 import unittest
@@ -58,3 +59,18 @@ class ExportServiceTests(unittest.TestCase):
         pickers = [service for service in page.services if isinstance(service, ft.FilePicker)]
         self.assertEqual(len(pickers), 1)
         self.assertEqual(pickers[0].data, "timetracker-export-picker")
+
+        def walk(control):
+            yield control
+            for child in getattr(control, "controls", []):
+                yield from walk(child)
+            content = getattr(control, "content", None)
+            if content is not None:
+                yield from walk(content)
+
+        export_buttons = [
+            control
+            for control in walk(settings_screen.build(page, self.ctx))
+            if inspect.iscoroutinefunction(getattr(control, "on_click", None))
+        ]
+        self.assertEqual(len(export_buttons), 2)

@@ -12,13 +12,38 @@ import os
 
 import flet as ft
 
+from app.services.gemini_service import DEFAULT_GEMINI_MODEL, normalize_gemini_model
 from mobile import theme
 from mobile.widgets.fury import fury_button
 
 
 def build(page: ft.Page, ctx) -> ft.Control:
     status_text = ft.Text("", size=12, color=theme.MUTED_TEXT)
+    gemini_status = ft.Text("", size=12, color=theme.MUTED_TEXT)
     score_column = ft.Column(spacing=8)
+    gemini_key_field = ft.TextField(
+        label="Personal Gemini API key",
+        value=ctx.get_setting("gemini_api_key"),
+        password=True,
+        can_reveal_password=True,
+        hint_text="Paste a replacement key from Google AI Studio",
+    )
+    gemini_model_field = ft.TextField(
+        label="Model",
+        value=normalize_gemini_model(ctx.get_setting("gemini_model")),
+        hint_text=DEFAULT_GEMINI_MODEL,
+    )
+
+    def _save_gemini(_event) -> None:
+        key = (gemini_key_field.value or "").strip()
+        model = normalize_gemini_model(gemini_model_field.value)
+        ctx.set_setting("gemini_api_key", key)
+        ctx.set_setting("gemini_model", model)
+        gemini_status.value = (
+            "Gemini is disconnected."
+            if not key else "Saved locally. Gemini is used only from AI Coach."
+        )
+        page.update()
     # FilePicker is a Flet service, not a visible control. It must be attached
     # to the page before save_file() can invoke Android's system Save dialog.
     # Reuse it when Settings is reopened so services do not accumulate.
@@ -157,6 +182,12 @@ def build(page: ft.Page, ctx) -> ft.Control:
             status_text.value = f"Export failed: {exc}"
         page.update()
 
+    async def _export_csv(_event) -> None:
+        await _export("csv")
+
+    async def _export_json(_event) -> None:
+        await _export("json")
+
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=20,
         controls=[
@@ -199,16 +230,29 @@ def build(page: ft.Page, ctx) -> ft.Control:
             ),
             score_column,
 
+            theme.section_label("Gemini AI Coach (optional)"),
+            ft.Text(
+                "For this personal APK only: add your own Google AI Studio key to use the "
+                "free tier when available. The key is stored in this app's local database. "
+                "Do not share the APK or your key; remove the key here to disconnect Gemini.",
+                size=12,
+                color=theme.MUTED_TEXT,
+            ),
+            gemini_key_field,
+            gemini_model_field,
+            fury_button("Save Gemini settings", kind="secondary", on_click=_save_gemini),
+            gemini_status,
+
             theme.section_label("Export data"),
             ft.Row(controls=[
-                fury_button("CSV", kind="secondary", on_click=lambda e: _export("csv")),
-                fury_button("JSON", kind="secondary", on_click=lambda e: _export("json")),
+                fury_button("CSV", kind="secondary", on_click=_export_csv),
+                fury_button("JSON", kind="secondary", on_click=_export_json),
             ]),
             status_text,
 
             theme.section_label("About"),
             ft.Text("Personal Time Tracker & Productivity Dashboard\n"
-                    "Offline — your data never leaves this device.",
+                    "Offline by default. Gemini receives data only when you request an AI review.",
                     size=12, color=theme.MUTED_TEXT),
         ],
     )

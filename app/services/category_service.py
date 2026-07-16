@@ -10,7 +10,7 @@ already has entries.
 from __future__ import annotations
 
 import sqlite3
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from app.database.repositories.category_repo import CategoryRepository
 from app.models.category import (
@@ -31,8 +31,16 @@ Outcome = Tuple[bool, str, Optional[int]]
 class CategoryService:
     """Create, edit, archive and delete activity categories."""
 
-    def __init__(self, category_repo: CategoryRepository) -> None:
+    def __init__(
+        self,
+        category_repo: CategoryRepository,
+        active_category_id: Optional[Callable[[], Optional[int]]] = None,
+    ) -> None:
         self.repo = category_repo
+        # Timer state belongs to TimerService.  Taking a tiny callback keeps the
+        # category rules reusable while preventing a live timer from being
+        # orphaned by deletion through either mobile or desktop management UI.
+        self._active_category_id = active_category_id
 
     # ------------------------------------------------------------------ #
     # Reads
@@ -159,8 +167,24 @@ class CategoryService:
         also enforces this (ON DELETE RESTRICT); we check first so we can give a
         clear message, and still catch the database error as a safety net.
         """
-        entry_count = self.repo.count_entries(category_id)
-        progress_count = self.repo.count_progress_rows(category_id)
+        if self._active_category_id and self._active_category_id() == category_id:
+            return (
+                False,
+                "Stop the running timer before deleting this category.",
+                None,
+            )
+
+        try:
+            if self.repo.get(category_id) is None:
+                return (False, "This category no longer exists.", None)
+            entry_count = self.repo.count_entries(category_id)
+            progress_count = self.repo.count_progress_rows(category_id)
+        except sqlite3.DatabaseError:
+            return (
+                False,
+                "Couldn't check whether this category can be deleted. Please try again.",
+                None,
+            )
         if entry_count > 0 or progress_count > 0:
             parts = []
             if entry_count:
@@ -182,6 +206,12 @@ class CategoryService:
                 False,
                 "This category is still in use and cannot be deleted. "
                 "Archive it instead.",
+                None,
+            )
+        except sqlite3.DatabaseError:
+            return (
+                False,
+                "The category could not be deleted right now. Please try again.",
                 None,
             )
         bus.publish(DATA_CHANGED)

@@ -12,6 +12,7 @@ import flet as ft
 
 from mobile import theme
 from mobile.screens import (
+    ai_coach_screen,
     calendar_screen, categories_screen, dashboard_screen, entries_screen,
     graphs_screen, home_screen, insights_screen, placeholder_screen,
     search_screen, settings_screen, statistics_screen, timer_screen,
@@ -29,6 +30,7 @@ _TABS = [
 
 # (label, icon, screen-builder). Every screen is now built — Milestone 3 complete.
 _MORE_ITEMS = [
+    ("AI Coach", ft.Icons.AUTO_AWESOME, ai_coach_screen.build),
     ("Dashboard", ft.Icons.DASHBOARD, dashboard_screen.build),
     ("Today's Entries", ft.Icons.LIST_ALT, entries_screen.build),
     ("Statistics", ft.Icons.BAR_CHART, statistics_screen.build),
@@ -39,9 +41,9 @@ _MORE_ITEMS = [
 ]
 
 _MORE_GROUPS = [
-    ("Review", _MORE_ITEMS[:4]),
-    ("Organize", _MORE_ITEMS[4:6]),
-    ("App", _MORE_ITEMS[6:]),
+    ("Review", _MORE_ITEMS[:5]),
+    ("Organize", _MORE_ITEMS[5:7]),
+    ("App", _MORE_ITEMS[7:]),
 ]
 
 

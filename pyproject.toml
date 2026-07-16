@@ -1,6 +1,6 @@
 [project]
 name = "timetracker-mobile"
-version = "0.1.3"
+version = "0.1.7"
 description = "Personal Time Tracker & Productivity Dashboard — Android (Flet)"
 requires-python = ">=3.10"
 dependencies = [
@@ -13,7 +13,7 @@ dependencies = [
 product = "Time Tracker"
 org = "com.timetracker"
 bundle_id = "com.timetracker.app"
-build_number = 4
+build_number = 8
 
 [tool.flet.app]
 module = "mobile_build_entry"
