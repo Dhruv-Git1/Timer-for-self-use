@@ -16,8 +16,13 @@ def form_sheet(
     on_close: Callable,
     *,
     body_height: float | None = None,
+    leading_actions: Sequence[ft.Control] = (),
 ) -> ft.BottomSheet:
-    """Create a scroll-friendly form sheet with a persistent action row."""
+    """Create a scroll-friendly form sheet with a persistent action row.
+
+    ``leading_actions`` holds destructive or secondary controls on the left;
+    Cancel and the primary Save action remain grouped on the right.
+    """
     body_control: ft.Control = body
     if body_height is not None:
         body_control = ft.Container(height=body_height, content=body)
@@ -48,8 +53,12 @@ def form_sheet(
                     body_control,
                     ft.Divider(color=theme.CARD_BORDER, height=1),
                     ft.Row(
-                        alignment=ft.MainAxisAlignment.END,
-                        controls=list(actions),
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Row(spacing=4, controls=list(leading_actions)),
+                            ft.Row(spacing=8, controls=list(actions)),
+                        ],
                     ),
                 ],
             ),

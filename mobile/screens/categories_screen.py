@@ -314,15 +314,15 @@ def build_manager(
             ft.TextButton("Cancel", on_click=lambda e: dismiss_sheet(page, sheet)),
             fury_button("Save", kind="primary", on_click=_save),
         ]
+        leading_actions = []
         if category:
-            actions.insert(
-                0,
+            leading_actions.append(
                 ft.TextButton(
                     "Unarchive" if category.is_archived else "Archive",
                     on_click=_archive,
-                ),
+                )
             )
-            actions.insert(0, ft.TextButton("Delete", on_click=_confirm_delete))
+            leading_actions.insert(0, ft.TextButton("Delete", on_click=_confirm_delete))
 
         sheet = form_sheet(
             "Edit category" if category else "Add category",
@@ -347,6 +347,7 @@ def build_manager(
             actions,
             lambda e: dismiss_sheet(page, sheet),
             body_height=280,
+            leading_actions=leading_actions,
         )
         show_sheet(page, sheet)
 

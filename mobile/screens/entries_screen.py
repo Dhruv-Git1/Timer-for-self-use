@@ -99,8 +99,9 @@ def build(page: ft.Page, ctx) -> ft.Control:
             ft.TextButton("Cancel", on_click=_cancel),
             fury_button("Save", kind="primary", on_click=_save),
         ]
+        leading_actions = []
         if entry:
-            actions.insert(0, ft.TextButton("Delete", on_click=_delete))
+            leading_actions.append(ft.TextButton("Delete", on_click=_delete))
 
         sheet = form_sheet(
             "Edit entry" if entry else "Add entry",
@@ -112,6 +113,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
             actions,
             _cancel,
             body_height=310,
+            leading_actions=leading_actions,
         )
         show_sheet(page, sheet)
 

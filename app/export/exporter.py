@@ -15,11 +15,22 @@ import os
 from datetime import datetime
 from typing import Dict, List, Tuple
 
-import pandas as pd
-
 import config
 from app.database.repositories.category_repo import CategoryRepository
 from app.database.repositories.entry_repo import EntryRepository
+
+_ENTRY_FIELDNAMES = [
+    "id",
+    "date",
+    "start_time",
+    "end_time",
+    "duration_minutes",
+    "duration",
+    "category",
+    "productive",
+    "crosses_midnight",
+    "notes",
+]
 
 
 class ExportService:
@@ -77,6 +88,10 @@ class ExportService:
     # ------------------------------------------------------------------ #
     def to_excel(self) -> Tuple[bool, str]:
         """Write an .xlsx workbook with an Entries sheet and a Categories sheet."""
+        # pandas is desktop-only. Keep this import local so CSV and JSON work
+        # in the smaller Android package, which intentionally omits pandas.
+        import pandas as pd
+
         path = self._timestamped_path("xlsx")
         entries_df = pd.DataFrame(self._entry_rows())
         categories_df = pd.DataFrame(self._category_rows())
@@ -96,10 +111,9 @@ class ExportService:
         path = self._timestamped_path("csv")
         rows = self._entry_rows()
         with open(path, "w", newline="", encoding="utf-8") as fh:
-            if rows:
-                writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
-                writer.writeheader()
-                writer.writerows(rows)
+            writer = csv.DictWriter(fh, fieldnames=_ENTRY_FIELDNAMES)
+            writer.writeheader()
+            writer.writerows(rows)
         return (True, path)
 
     def to_json(self) -> Tuple[bool, str]:

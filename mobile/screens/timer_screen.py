@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import math
+import os
 import time
 
 import flet as ft
+import flet_video as ftv
 
+import config
 from app.utils import time_utils, validators
 from mobile import theme
 from mobile.screens import categories_screen
@@ -46,6 +49,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
     }
     editing_goals = {"on": False}
     goal_inputs: dict[int, ft.TextField] = {}
+    celebration_state = {"initialized": False, "was_complete": False}
 
     clock_text = ft.Text(
         "0:00:00",
@@ -313,6 +317,110 @@ def build(page: ft.Page, ctx) -> ft.Control:
         )
         show_sheet(page, sheet)
 
+    def _all_daily_goals_complete() -> bool:
+        score = ctx.daily_progress_service.score(time_utils.today_str())
+        return bool(score.items) and all(
+            item.completion_pct >= 100 for item in score.items
+        )
+
+    def _show_goal_celebration() -> None:
+        """Play the supplied celebration clip over the Timer screen once."""
+        video = ftv.Video(
+            expand=True,
+            autoplay=True,
+            controls=None,
+                    # Fill the entire phone display; the source video is
+                    # landscape, so its outer edges may be cropped on portrait
+                    # devices rather than leaving letterbox bars.
+                    fit=ft.BoxFit.COVER,
+            playlist=[
+                ftv.VideoMedia(
+                    os.path.join(config.ASSETS_DIR, "goal-complete.mp4")
+                )
+            ],
+        )
+
+        async def _stop_and_dismiss() -> None:
+            try:
+                await video.stop()
+            except Exception:  # noqa: BLE001 - the player may already be closed
+                pass
+            dismiss_sheet(page, sheet)
+
+        def _dismiss(e=None) -> None:
+            page.run_task(_stop_and_dismiss)
+
+        video.on_complete = _dismiss
+        sheet = ft.BottomSheet(
+            bgcolor="#000000",
+            dismissible=False,
+            draggable=False,
+            fullscreen=True,
+            content=ft.Container(
+                expand=True,
+                bgcolor="#000000",
+                content=ft.Stack(
+                    fit=ft.StackFit.EXPAND,
+                    controls=[
+                        video,
+                        ft.Container(
+                            top=20,
+                            right=16,
+                            content=ft.IconButton(
+                                icon=ft.Icons.CLOSE,
+                                icon_color=theme.HEADLINE,
+                                tooltip="Close celebration",
+                                on_click=_dismiss,
+                            ),
+                        ),
+                        ft.Container(
+                            left=20,
+                            right=20,
+                            bottom=28,
+                            padding=14,
+                            border_radius=12,
+                            bgcolor=ft.Colors.with_opacity(0.76, "#08080A"),
+                            content=ft.Row(
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                controls=[
+                                    ft.Column(
+                                        tight=True,
+                                        spacing=2,
+                                        controls=[
+                                            theme.section_label("Daily goal complete"),
+                                            ft.Text(
+                                                "You completed every goal for today.",
+                                                size=12,
+                                                color=theme.HEADLINE,
+                                            ),
+                                        ],
+                                    ),
+                                    fury_button(
+                                        "Continue", kind="primary", on_click=_dismiss
+                                    ),
+                                ],
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        )
+        show_sheet(page, sheet)
+
+    def _maybe_show_goal_celebration() -> None:
+        today = time_utils.today_str()
+        is_complete = _all_daily_goals_complete()
+        if not celebration_state["initialized"]:
+            celebration_state["initialized"] = True
+        elif (
+            is_complete
+            and not celebration_state["was_complete"]
+            and ctx.get_setting("last_goal_celebration_date") != today
+        ):
+            ctx.set_setting("last_goal_celebration_date", today)
+            _show_goal_celebration()
+        celebration_state["was_complete"] = is_complete
+
     def _refresh_score_and_checkins() -> None:
         today = time_utils.today_str()
         score = ctx.daily_progress_service.score(today)
@@ -562,6 +670,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
         _refresh_score_and_checkins()
         _refresh_goals()
         _refresh_grid()
+        _maybe_show_goal_celebration()
         page.update()
 
     _refresh_all()

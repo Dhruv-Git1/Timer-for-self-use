@@ -54,6 +54,7 @@ class AppShell:
         self.body = ft.Container(expand=True, padding=16)
         self._current_tab = "timer"
         self._more_detail_open = False
+        self._detail_view: ft.View | None = None
 
         self.nav_bar = ft.NavigationBar(
             selected_index=0,
@@ -74,7 +75,7 @@ class AppShell:
             bgcolor=theme.BG,
             padding=0,
             spacing=0,
-            on_confirm_pop=self._confirm_back,
+            can_pop=False,
             navigation_bar=self.nav_bar,
             controls=[self.body],
         )
@@ -144,21 +145,36 @@ class AppShell:
             content = builder(self.page, self.ctx)
         else:
             content = placeholder_screen.build(label, "Coming in a future milestone.")
-        self.body.content = screen_enter(content, self.page)
+
+        self._detail_view = ft.View(
+            route=f"/more/{label.lower().replace(' ', '-')}",
+            bgcolor=theme.BG,
+            padding=0,
+            spacing=0,
+            appbar=ft.AppBar(
+                title=ft.Text(label, color=theme.HEADLINE),
+                bgcolor=theme.SIDEBAR,
+            ),
+            controls=[
+                ft.Container(
+                    expand=True,
+                    padding=16,
+                    content=screen_enter(content, self.page),
+                )
+            ],
+        )
+        self.page.views.append(self._detail_view)
         self.page.update()
 
-    def _return_from_back(self) -> None:
-        """Keep the sole root View alive and navigate inside the app instead."""
-        if self._more_detail_open:
-            self._show_tab("more")
-        elif self._current_tab != "timer":
-            self._show_tab("timer")
-
-    async def _confirm_back(self, _event: ft.ControlEvent) -> None:
-        """Cancel Android's root-view pop so it cannot leave a black screen."""
-        self._return_from_back()
-        await self.view.confirm_pop(False)
-
-    def _on_view_pop(self, _event: ft.ViewPopEvent) -> None:
-        """Fallback for platforms that dispatch a view-pop directly."""
-        self._return_from_back()
+    def _on_view_pop(self, event: ft.ViewPopEvent) -> None:
+        """Remove only a detail View; the root View is intentionally permanent."""
+        if self._detail_view is None:
+            return
+        detail_view = event.view or self._detail_view
+        if detail_view in self.page.views:
+            self.page.views.remove(detail_view)
+        elif self._detail_view in self.page.views:
+            self.page.views.remove(self._detail_view)
+        self._detail_view = None
+        self._more_detail_open = False
+        self.page.update()

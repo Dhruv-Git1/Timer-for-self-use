@@ -8,6 +8,8 @@ with a file manager, neither of which fits a first mobile pass.
 
 from __future__ import annotations
 
+import os
+
 import flet as ft
 
 from mobile import theme
@@ -17,6 +19,21 @@ from mobile.widgets.fury import fury_button
 def build(page: ft.Page, ctx) -> ft.Control:
     status_text = ft.Text("", size=12, color=theme.MUTED_TEXT)
     score_column = ft.Column(spacing=8)
+    # FilePicker is a Flet service, not a visible control. It must be attached
+    # to the page before save_file() can invoke Android's system Save dialog.
+    # Reuse it when Settings is reopened so services do not accumulate.
+    file_picker = next(
+        (
+            service
+            for service in page.services
+            if isinstance(service, ft.FilePicker)
+            and service.data == "timetracker-export-picker"
+        ),
+        None,
+    )
+    if file_picker is None:
+        file_picker = ft.FilePicker(data="timetracker-export-picker")
+        page.services.append(file_picker)
 
     def _toggle_score_inclusion(category, included: bool) -> None:
         category.include_in_daily_score = included
@@ -113,12 +130,31 @@ def build(page: ft.Page, ctx) -> ft.Control:
 
     _refresh_score_section()
 
-    def _export(fmt: str) -> None:
+    async def _export(fmt: str) -> None:
         try:
-            ok, path = ctx.export_service.to_csv() if fmt == "csv" else ctx.export_service.to_json()
-            status_text.value = f"✓ Exported to {path}" if ok else "✗ Export failed."
+            ok, path = (
+                ctx.export_service.to_csv()
+                if fmt == "csv" else ctx.export_service.to_json()
+            )
+            if not ok:
+                status_text.value = "Export failed."
+                page.update()
+                return
+
+            with open(path, "rb") as export_file:
+                saved_path = await file_picker.save_file(
+                    dialog_title=f"Save {fmt.upper()} export",
+                    file_name=os.path.basename(path),
+                    file_type=ft.FilePickerFileType.CUSTOM,
+                    allowed_extensions=[fmt],
+                    src_bytes=export_file.read(),
+                )
+            status_text.value = (
+                f"Saved {os.path.basename(saved_path)}"
+                if saved_path else "Export canceled."
+            )
         except Exception as exc:  # noqa: BLE001 - surface any export problem
-            status_text.value = f"✗ Export failed: {exc}"
+            status_text.value = f"Export failed: {exc}"
         page.update()
 
     return ft.Column(
