@@ -191,6 +191,11 @@ def build_manager(
         )
         mode_help = ft.Text("", size=11, color=theme.MUTED_TEXT)
         error_text = ft.Text("", color=theme.STOP_RED, size=12)
+        sheet_result = {"changed": False}
+
+        def _after_sheet(_event=None) -> None:
+            if sheet_result["changed"]:
+                _changed()
 
         def _refresh_mode(e=None) -> None:
             mode = mode_dropdown.value or TRACKING_TIMER
@@ -262,8 +267,8 @@ def build_manager(
                 error_text.value = msg
                 page.update()
                 return
+            sheet_result["changed"] = True
             dismiss_sheet(page, sheet)
-            _changed()
 
         def _archive(e=None) -> None:
             if is_active_category:
@@ -271,8 +276,8 @@ def build_manager(
                 page.update()
                 return
             ctx.category_service.set_archived(category.id, not category.is_archived)
+            sheet_result["changed"] = True
             dismiss_sheet(page, sheet)
-            _changed()
 
         def _confirm_delete(e=None) -> None:
             active = ctx.timer_service.current_state()
@@ -283,6 +288,7 @@ def build_manager(
 
             dialog_open = True
             deleting = False
+            confirmation_error = ft.Text("", size=12, color=theme.STOP_RED)
 
             def _close_confirmation() -> None:
                 nonlocal dialog_open
@@ -300,13 +306,15 @@ def build_manager(
                 except Exception:  # noqa: BLE001 - keep UI alive on unexpected failures
                     ok = False
                     msg = "Couldn't delete this category. Please try again."
-                _close_confirmation()
                 if ok:
-                    dismiss_sheet(page, sheet)
-                    _changed()
+                    sheet_result["changed"] = True
+                    _close_confirmation()
                 else:
-                    # The edit sheet stays open, so an error can be shown
-                    # without pushing a second dialog while the first dismisses.
+                    # Keep the confirmation dialog mounted. Closing it and then
+                    # updating a control it owns can leave the More detail view
+                    # in an inconsistent dialog state on Android.
+                    deleting = False
+                    confirmation_error.value = msg
                     error_text.value = msg
                     page.update()
 
@@ -314,11 +322,19 @@ def build_manager(
                 ft.AlertDialog(
                     modal=True,
                     title=ft.Text("Delete category?"),
-                    content=ft.Text(f'Delete "{category.name}"? This cannot be undone.'),
+                    content=ft.Column(
+                        tight=True,
+                        controls=[
+                            ft.Text(f'Delete "{category.name}"? This cannot be undone.'),
+                            confirmation_error,
+                        ],
+                    ),
                     actions=[
                         ft.TextButton("Cancel", on_click=lambda e: _close_confirmation()),
                         ft.TextButton("Delete", on_click=_do_delete),
                     ],
+                    on_dismiss=lambda e: dismiss_sheet(page, sheet)
+                    if sheet_result["changed"] else None,
                 )
             )
 
@@ -360,6 +376,7 @@ def build_manager(
             lambda e: dismiss_sheet(page, sheet),
             body_height=280,
             leading_actions=leading_actions,
+            on_dismiss=_after_sheet,
         )
         show_sheet(page, sheet)
 

@@ -1,13 +1,11 @@
-"""Explicitly opt-in Gemini coaching for the user's recent tracker data."""
+"""Explicitly opt-in Gemini coaching for the user's tracker history."""
 
 from __future__ import annotations
 
 import asyncio
-import os
 
 import flet as ft
 
-import config
 from app.services.csv_insights_service import CsvInsightsError, CsvInsightsService
 from app.services.gemini_service import (
     DEFAULT_GEMINI_MODEL,
@@ -27,21 +25,20 @@ def build(page: ft.Page, ctx) -> ft.Control:
     result_text = ft.Text("", size=13, color=theme.HEADLINE)
     status_text = ft.Text("", size=12, color=theme.MUTED_TEXT)
     source_text = ft.Text(
-        "Source: this app's recent 14 days and saved reflections.",
+        "Source: all time-tracking history saved in this app (automatic).",
         size=12,
         color=theme.MUTED_TEXT,
     )
     result_card = ft.Container(visible=False)
     analyze_button = fury_button(
-        "Analyze last 14 days",
+        "Analyze my history",
         kind="primary",
         icon=ft.Icons.AUTO_AWESOME,
         on_click=None,
     )
 
-    # FilePicker is a page service. Keep one stable instance when the screen
-    # is revisited; with_data=False is intentional so large CSV files are not
-    # loaded into memory or uploaded to the app.
+    # FilePicker is only for an optional external/old CSV. Normal coaching
+    # reads SQLite automatically and never requires an export.
     file_picker = next(
         (
             service
@@ -63,13 +60,20 @@ def build(page: ft.Page, ctx) -> ft.Control:
     def _set_csv_source(path: str, name: str) -> None:
         source["path"] = path
         source["name"] = name
+        source_text.value = f"Source: optional external CSV - {name}."
+
+    def _use_app_history(_event) -> None:
+        source["path"] = None
+        source["name"] = None
         source_text.value = (
-            f"Source: CSV export — {name}. It will replace the recent-app-data source."
+            "Source: all time-tracking history saved in this app (automatic)."
         )
+        status_text.value = "Using the app database. No export or file selection is needed."
+        page.update()
 
     async def _choose_csv(_event) -> None:
         files = await file_picker.pick_files(
-            dialog_title="Choose a Time Tracker CSV export",
+            dialog_title="Choose an optional external Time Tracker CSV",
             file_type=ft.FilePickerFileType.CUSTOM,
             allowed_extensions=["csv"],
             allow_multiple=False,
@@ -81,32 +85,16 @@ def build(page: ft.Page, ctx) -> ft.Control:
         selected = files[0]
         if not selected.path:
             status_text.value = (
-                "This file location cannot be streamed by the app. Export a CSV from "
-                "Settings, then use Latest CSV export instead."
+                "This optional CSV location cannot be read. Your automatic app-history "
+                "source is still available."
             )
             page.update()
             return
 
         _set_csv_source(selected.path, selected.name or "selected CSV")
-        status_text.value = "CSV selected. It has not been uploaded or analyzed yet."
-        page.update()
-
-    async def _use_latest_export(_event) -> None:
-        try:
-            candidates = [
-                os.path.join(config.EXPORT_DIR, filename)
-                for filename in os.listdir(config.EXPORT_DIR)
-                if filename.lower().endswith(".csv")
-                and filename.startswith("timetracker_")
-            ]
-            latest_path = max(candidates, key=os.path.getmtime)
-        except (OSError, ValueError):
-            status_text.value = "No Time Tracker CSV export found. Create one in Settings first."
-            page.update()
-            return
-
-        _set_csv_source(latest_path, os.path.basename(latest_path))
-        status_text.value = "Latest CSV selected. It has not been uploaded or analyzed yet."
+        status_text.value = (
+            "External CSV selected for the next analysis. It has not been uploaded."
+        )
         page.update()
 
     async def _analyze(_event) -> None:
@@ -123,7 +111,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
         page.update()
         try:
             if source["path"]:
-                status_text.value = "Summarizing the CSV locally..."
+                status_text.value = "Summarizing the external CSV locally..."
                 page.update()
                 report = await asyncio.to_thread(
                     CsvInsightsService().report_from_path,
@@ -135,9 +123,11 @@ def build(page: ft.Page, ctx) -> ft.Control:
                     "were excluded."
                 )
             else:
-                report = ctx.ai_insights_service.recent_report(days=14)
+                report = ctx.ai_insights_service.all_history_report()
                 sent_description = (
-                    "Only this 14-day aggregate and saved daily reflections were sent."
+                    "Your complete app history was summarized automatically. Gemini received "
+                    "all-time/yearly totals, recent day/month detail, weekday/category patterns, "
+                    "and up to 60 recent daily reflections - not raw session rows."
                 )
             model = ctx.get_setting("gemini_model", DEFAULT_GEMINI_MODEL)
             service = GeminiService(api_key, model)
@@ -184,9 +174,9 @@ def build(page: ft.Page, ctx) -> ft.Control:
                     controls=[
                         theme.section_label("Private by default"),
                         ft.Text(
-                            "Your tracker stays local. Gemini is contacted only when you tap "
-                            "Analyze. A selected CSV is summarized row by row on your device; "
-                            "the file and entry notes are never sent.",
+                            "AI Coach reads the history already stored inside this app - no "
+                            "CSV download is needed. Gemini is contacted only when you tap "
+                            "Analyze, and receives a compact summary instead of raw session rows.",
                             size=12,
                             color=theme.MUTED_TEXT,
                         ),
@@ -196,13 +186,36 @@ def build(page: ft.Page, ctx) -> ft.Control:
             ),
             theme.card(
                 ft.Column(
+                    spacing=7,
+                    controls=[
+                        theme.section_label("Data source"),
+                        ft.Text(
+                            "By default, all saved time entries are summarized on your phone. "
+                            "Older years are compressed into monthly/yearly totals so the request "
+                            "stays small.",
+                            size=12,
+                            color=theme.MUTED_TEXT,
+                        ),
+                        source_text,
+                    ],
+                ),
+                padding=14,
+            ),
+            analyze_button,
+            status_text,
+            result_card,
+            theme.card(
+                ft.Column(
                     spacing=5,
                     controls=[
                         theme.section_label("Today's reflection"),
                         ft.Text(
-                            todays_reflection or "No reflection saved yet. Write one on Home first.",
+                            todays_reflection
+                            or "No reflection saved yet. Write one on Home first.",
                             size=12,
-                            color=theme.HEADLINE if todays_reflection else theme.MUTED_TEXT,
+                            color=(
+                                theme.HEADLINE if todays_reflection else theme.MUTED_TEXT
+                            ),
                             max_lines=4,
                             overflow=ft.TextOverflow.ELLIPSIS,
                         ),
@@ -214,37 +227,34 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 ft.Column(
                     spacing=7,
                     controls=[
-                        theme.section_label("Analyze a longer CSV history"),
+                        theme.section_label("Optional external CSV"),
                         ft.Text(
-                            "Optional: choose a Time Tracker CSV export for multi-year trends. "
-                            "It replaces the 14-day app-data source for this analysis.",
+                            "Only use this for old or external data that is not stored in this "
+                            "app. Normal AI coaching does not require a CSV.",
                             size=12,
                             color=theme.MUTED_TEXT,
                         ),
                         ft.Row(
                             spacing=8,
+                            wrap=True,
                             controls=[
                                 fury_button(
-                                    "Choose CSV",
+                                    "Choose external CSV",
                                     kind="secondary",
                                     icon=ft.Icons.UPLOAD_FILE,
                                     on_click=_choose_csv,
                                 ),
                                 fury_button(
-                                    "Latest CSV export",
+                                    "Use app history",
                                     kind="secondary",
-                                    icon=ft.Icons.FOLDER_OPEN,
-                                    on_click=_use_latest_export,
+                                    icon=ft.Icons.STORAGE,
+                                    on_click=_use_app_history,
                                 ),
                             ],
                         ),
-                        source_text,
                     ],
                 ),
                 padding=14,
             ),
-            analyze_button,
-            status_text,
-            result_card,
         ],
     )

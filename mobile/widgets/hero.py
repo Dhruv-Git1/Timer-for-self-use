@@ -26,7 +26,7 @@ COMPACT_HEIGHT = 220
 
 def hero_banner(
     page: ft.Page,
-    kicker: str = "OPERATION : DISCIPLINE",
+    kicker: str = "OPERATION",
     headline: str = "REVENGE",
     subtitle: str = "",
     height: float = DEFAULT_HEIGHT,

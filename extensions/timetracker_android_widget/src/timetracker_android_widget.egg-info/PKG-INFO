@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: timetracker-android-widget
+Version: 0.2.0
+Summary: Flet Android timer widget and countdown alarm extension
+Requires-Python: >=3.10

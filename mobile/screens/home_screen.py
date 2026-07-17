@@ -186,7 +186,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
         scroll=ft.ScrollMode.AUTO,
         spacing=16,
         controls=[
-            hero_banner(page, kicker="Operation : Discipline", headline="REVENGE",
+            hero_banner(page, kicker="Operation", headline="REVENGE",
                         subtitle=hero_subtitle, with_clock=True),
             cards,
             daily_review_card,

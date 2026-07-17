@@ -21,6 +21,9 @@ class DailyReflectionService:
     def list_by_date_range(self, start_date: str, end_date: str):
         return self.reflections.list_by_date_range(start_date, end_date)
 
+    def list_recent(self, limit: int = 60):
+        return self.reflections.list_recent(limit)
+
     def save(self, log_date: str, notes: str) -> str:
         notes = notes.strip()
         if len(notes) > self.MAX_NOTES_CHARS:

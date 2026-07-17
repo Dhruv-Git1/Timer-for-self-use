@@ -1,0 +1,44 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/target_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@drawable/target_widget_background">
+
+    <TextView
+        android:id="@+id/target_widget_eyebrow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="TODAY'S TARGET"
+        android:textColor="#99F6E4"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.08" />
+
+    <TextView
+        android:id="@+id/target_widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/target_widget_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:textColor="#D1FAE5"
+        android:textSize="13sp" />
+
+    <ProgressBar
+        android:id="@+id/target_widget_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:layout_marginTop="12dp"
+        android:max="100"
+        android:progressDrawable="@drawable/target_progress" />
+</LinearLayout>

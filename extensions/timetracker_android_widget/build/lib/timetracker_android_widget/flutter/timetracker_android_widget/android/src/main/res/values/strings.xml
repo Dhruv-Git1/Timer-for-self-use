@@ -1,0 +1,5 @@
+<resources>
+    <string name="widget_description">Live Time Tracker timer</string>
+    <string name="notification_channel_name">Countdown complete</string>
+    <string name="notification_title">Countdown finished</string>
+</resources>

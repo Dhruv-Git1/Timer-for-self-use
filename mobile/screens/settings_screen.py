@@ -15,6 +15,7 @@ import flet as ft
 from app.services.gemini_service import DEFAULT_GEMINI_MODEL, normalize_gemini_model
 from mobile import theme
 from mobile.widgets.fury import fury_button
+from mobile.widgets.sheets import dismiss_sheet, form_sheet, show_sheet
 
 
 def build(page: ft.Page, ctx) -> ft.Control:
@@ -59,6 +60,18 @@ def build(page: ft.Page, ctx) -> ft.Control:
     if file_picker is None:
         file_picker = ft.FilePicker(data="timetracker-export-picker")
         page.services.append(file_picker)
+    import_picker = next(
+        (
+            service
+            for service in page.services
+            if isinstance(service, ft.FilePicker)
+            and service.data == "timetracker-import-picker"
+        ),
+        None,
+    )
+    if import_picker is None:
+        import_picker = ft.FilePicker(data="timetracker-import-picker")
+        page.services.append(import_picker)
 
     def _toggle_score_inclusion(category, included: bool) -> None:
         category.include_in_daily_score = included
@@ -188,6 +201,118 @@ def build(page: ft.Page, ctx) -> ft.Control:
     async def _export_json(_event) -> None:
         await _export("json")
 
+    async def _import_csv(_event) -> None:
+        try:
+            files = await import_picker.pick_files(
+                dialog_title="Choose Time Tracker CSV",
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["csv"],
+                allow_multiple=False,
+                with_data=True,
+            )
+            if not files:
+                status_text.value = "Import canceled."
+                page.update()
+                return
+            selected_file = files[0]
+            source = selected_file.bytes if selected_file.bytes is not None else selected_file.path
+            if source is None:
+                status_text.value = "The selected CSV could not be read by the app."
+                page.update()
+                return
+            preview = ctx.csv_import_service.preview(source, source_name=selected_file.name)
+            _show_import_preview(preview)
+        except Exception as exc:  # noqa: BLE001 - retain the Settings screen on failures
+            status_text.value = f"Import preview failed: {exc}"
+            page.update()
+
+    def _show_import_preview(preview) -> None:
+        importing = {"value": False}
+        details: list[ft.Control] = [
+            ft.Text(preview.source_name, size=13, color=theme.HEADLINE),
+            ft.Text(
+                f"{preview.valid_rows} valid entr{'y' if preview.valid_rows == 1 else 'ies'} · "
+                f"{preview.duplicate_rows} duplicate{'s' if preview.duplicate_rows != 1 else ''}",
+                size=12,
+                color=theme.MUTED_TEXT,
+            ),
+        ]
+        if preview.new_category_names:
+            details.append(
+                ft.Text(
+                    "New categories: " + ", ".join(preview.new_category_names),
+                    size=12,
+                    color=theme.MUTED_TEXT,
+                )
+            )
+        if preview.existing_category_conflicts:
+            details.append(theme.section_label("Existing category settings kept"))
+            details.extend(
+                ft.Text(
+                    f"{conflict.category}: productive stays "
+                    f"{'yes' if conflict.existing_productive else 'no'}.",
+                    size=12,
+                    color=theme.MUTED_TEXT,
+                )
+                for conflict in preview.existing_category_conflicts
+            )
+        if preview.issues:
+            details.append(theme.section_label("Validation errors"))
+            details.extend(
+                ft.Text(
+                    f"Row {issue.row_number}: {issue.message}" if issue.row_number else issue.message,
+                    size=12,
+                    color=theme.STOP_RED,
+                )
+                for issue in preview.issues
+            )
+        elif preview.total_rows == 0:
+            details.append(
+                ft.Text("This export is valid but has no entries to import.",
+                        size=12, color=theme.MUTED_TEXT)
+            )
+
+        def _cancel(_event=None) -> None:
+            dismiss_sheet(page, sheet)
+
+        async def _confirm(_event=None) -> None:
+            if importing["value"]:
+                return
+            importing["value"] = True
+            try:
+                result = ctx.csv_import_service.import_preview(preview)
+            except Exception as exc:  # keep the preview open for a useful retry/error
+                importing["value"] = False
+                preview_body.controls.append(
+                    ft.Text(f"Import failed: {exc}", size=12, color=theme.STOP_RED)
+                )
+                page.update()
+                return
+            _cancel()
+            status_text.value = (
+                f"Imported {result.imported_entries}; skipped {result.skipped_duplicates} duplicates; "
+                f"created {result.created_categories} categories."
+            )
+            page.update()
+
+        preview_body = ft.Column(spacing=8, controls=details)
+        sheet = form_sheet(
+            "Import CSV",
+            preview_body,
+            [
+                ft.TextButton("Cancel", on_click=_cancel),
+                fury_button(
+                    "Import",
+                    kind="primary",
+                    disabled=not preview.import_allowed,
+                    on_click=_confirm,
+                ),
+            ],
+            _cancel,
+            body_height=430,
+        )
+        show_sheet(page, sheet)
+
     return ft.Column(
         expand=True, scroll=ft.ScrollMode.AUTO, spacing=20,
         controls=[
@@ -243,10 +368,11 @@ def build(page: ft.Page, ctx) -> ft.Control:
             fury_button("Save Gemini settings", kind="secondary", on_click=_save_gemini),
             gemini_status,
 
-            theme.section_label("Export data"),
+            theme.section_label("Data"),
             ft.Row(controls=[
-                fury_button("CSV", kind="secondary", on_click=_export_csv),
-                fury_button("JSON", kind="secondary", on_click=_export_json),
+                fury_button("Import CSV", kind="secondary", on_click=_import_csv),
+                fury_button("Export CSV", kind="secondary", on_click=_export_csv),
+                fury_button("Export JSON", kind="secondary", on_click=_export_json),
             ]),
             status_text,
 

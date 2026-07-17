@@ -23,6 +23,25 @@ class DailyProgressRepository(BaseRepository):
         progress = self.get(category_id, log_date)
         return progress.value if progress else 0
 
+    def total_for_range(self, category_id: int, start_date: str, end_date: str) -> int:
+        """Return the category's saved counter/check-off total in a date range."""
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(value), 0) AS total FROM daily_progress "
+            "WHERE category_id = ? AND log_date BETWEEN ? AND ?",
+            (category_id, start_date, end_date),
+        ).fetchone()
+        return int(row["total"])
+
+    def values_for_range(
+        self, category_id: int, start_date: str, end_date: str
+    ) -> dict[str, int]:
+        rows = self.conn.execute(
+            "SELECT log_date, value FROM daily_progress "
+            "WHERE category_id = ? AND log_date BETWEEN ? AND ?",
+            (category_id, start_date, end_date),
+        ).fetchall()
+        return {row["log_date"]: int(row["value"]) for row in rows}
+
     def set_value(self, category_id: int, log_date: str, value: int) -> int:
         value = max(0, int(value))
         if value == 0:

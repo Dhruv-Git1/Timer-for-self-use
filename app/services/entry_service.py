@@ -90,6 +90,9 @@ class EntryService:
         start_ts: str,
         end_ts: str,
         notes: str = "",
+        *,
+        commit: bool = True,
+        publish: bool = True,
     ) -> Outcome:
         """Store an entry from two real timestamps already captured by the timer.
 
@@ -110,9 +113,17 @@ class EntryService:
             return (False, "Session exceeds 24 hours.", None)
 
         new_id = self.repo.create(
-            category_id, log_date, start_ts, end_ts, duration, crosses, notes.strip()
+            category_id,
+            log_date,
+            start_ts,
+            end_ts,
+            duration,
+            crosses,
+            notes.strip(),
+            commit=commit,
         )
-        bus.publish(DATA_CHANGED, date=log_date)
+        if publish:
+            bus.publish(DATA_CHANGED, date=log_date)
         return (True, "", new_id)
 
     def update_entry(

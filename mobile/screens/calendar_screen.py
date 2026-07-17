@@ -67,9 +67,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 content=ft.Column(tight=True, spacing=8, scroll=ft.ScrollMode.AUTO, controls=rows),
             ),
         )
-        page.overlay.append(sheet)
-        sheet.open = True
-        page.update()
+        page.show_dialog(sheet)
 
     def _refresh() -> None:
         month_label.value = f"{_calendar.month_name[state['month']]} {state['year']}"

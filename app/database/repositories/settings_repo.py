@@ -22,10 +22,11 @@ class SettingsRepository(BaseRepository):
         ).fetchone()
         return row["value"] if row else default
 
-    def set(self, key: str, value: str) -> None:
+    def set(self, key: str, value: str, *, commit: bool = True) -> None:
         """Store ``value`` under ``key`` (inserting or overwriting)."""
         self.conn.execute(
             "INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)",
             (key, value),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()

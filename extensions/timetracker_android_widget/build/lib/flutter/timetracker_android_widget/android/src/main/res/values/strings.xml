@@ -1,0 +1,6 @@
+<resources>
+    <string name="timer_widget_description">Live stopwatch or countdown display</string>
+    <string name="target_widget_description">Today\'s target progress and completion status</string>
+    <string name="notification_channel_name">Countdown complete</string>
+    <string name="notification_title">Countdown finished</string>
+</resources>

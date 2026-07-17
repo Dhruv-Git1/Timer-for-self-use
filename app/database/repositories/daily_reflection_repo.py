@@ -30,6 +30,20 @@ class DailyReflectionRepository(BaseRepository):
         ).fetchall()
         return [DailyReflection.from_row(row) for row in rows]
 
+    def list_recent(self, limit: int = 60) -> list[DailyReflection]:
+        """Return the newest saved reflections in chronological order."""
+        limit = max(1, min(int(limit), 90))
+        rows = self.conn.execute(
+            """
+            SELECT log_date, notes
+              FROM daily_reflections
+             ORDER BY log_date DESC
+             LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [DailyReflection.from_row(row) for row in reversed(rows)]
+
     def set(self, log_date: str, notes: str) -> None:
         if not notes:
             self.conn.execute("DELETE FROM daily_reflections WHERE log_date = ?", (log_date,))

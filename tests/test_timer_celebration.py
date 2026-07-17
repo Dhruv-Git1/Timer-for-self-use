@@ -15,6 +15,7 @@ from mobile.screens import timer_screen
 class _PageStub:
     def __init__(self) -> None:
         self.overlay = []
+        self.dialogs = []
         self.views = []
 
     def update(self) -> None:
@@ -23,11 +24,15 @@ class _PageStub:
     def run_task(self, *args, **kwargs) -> None:
         pass
 
-    def show_dialog(self, *args, **kwargs) -> None:
-        pass
+    def show_dialog(self, dialog, *args, **kwargs) -> None:
+        dialog.open = True
+        self.dialogs.append(dialog)
 
     def pop_dialog(self, *args, **kwargs) -> None:
-        pass
+        dialog = self.dialogs.pop()
+        dialog.open = False
+        if dialog.on_dismiss:
+            dialog.on_dismiss(None)
 
 
 def _walk(control):
@@ -62,13 +67,15 @@ class TimerCelebrationTests(unittest.TestCase):
         page = _PageStub()
         screen = timer_screen.build(page, self.ctx)
         self.assertEqual(page.overlay, [])
+        self.assertEqual(page.dialogs, [])
 
         checkoff = next(control for control in _walk(screen) if isinstance(control, ft.Checkbox))
         checkoff.value = True
         checkoff.on_change(SimpleNamespace(control=checkoff))
 
-        self.assertEqual(len(page.overlay), 1)
-        celebration = page.overlay[0]
+        self.assertEqual(len(page.dialogs), 1)
+        self.assertEqual(page.overlay, [])
+        celebration = page.dialogs[0]
         self.assertIsInstance(celebration, ft.BottomSheet)
         self.assertTrue(celebration.fullscreen)
         video = next(control for control in _walk(celebration) if isinstance(control, ftv.Video))
@@ -77,6 +84,11 @@ class TimerCelebrationTests(unittest.TestCase):
         self.assertTrue(video.playlist[0].resource.endswith("goal-complete.mp4"))
         self.assertEqual(video.configuration.output_driver, "mediacodec_embed")
         self.assertEqual(video.configuration.hardware_decoding_api, "mediacodec")
+        # The daily latch is not set until the native player says it is ready.
+        # A player startup failure must leave the celebration retryable.
+        self.assertEqual(self.ctx.get_setting(timer_screen.GOAL_CELEBRATION_SETTING), "")
+        self.assertIsNotNone(video.on_load)
+        video.on_load(SimpleNamespace())
         self.assertEqual(
             self.ctx.get_setting(timer_screen.GOAL_CELEBRATION_SETTING),
             timer_screen.time_utils.today_str(),
@@ -87,7 +99,7 @@ class TimerCelebrationTests(unittest.TestCase):
         checkoff.on_change(SimpleNamespace(control=checkoff))
         checkoff.value = True
         checkoff.on_change(SimpleNamespace(control=checkoff))
-        self.assertEqual(len(page.overlay), 1)
+        self.assertEqual(len(page.dialogs), 1)
 
     def test_completion_still_celebrates_when_a_goal_is_excluded_from_score(self) -> None:
         category = next(iter(self.ctx.category_service.list_categories()))
@@ -101,7 +113,27 @@ class TimerCelebrationTests(unittest.TestCase):
         checkoff.value = True
         checkoff.on_change(SimpleNamespace(control=checkoff))
 
-        self.assertEqual(len(page.overlay), 1)
+        self.assertEqual(len(page.dialogs), 1)
+
+    def test_timer_screen_surfaces_an_unacknowledged_completed_day(self) -> None:
+        """Returning to Timer after a background completion still celebrates."""
+        category = next(iter(self.ctx.category_service.list_categories()))
+        self.ctx.daily_progress_service.toggle(
+            category.id, timer_screen.time_utils.today_str()
+        )
+
+        page = _PageStub()
+        timer_screen.build(page, self.ctx)
+
+        self.assertEqual(len(page.dialogs), 1)
+        self.assertEqual(page.overlay, [])
+        video = next(control for control in _walk(page.dialogs[0]) if isinstance(control, ftv.Video))
+        self.assertIsNotNone(video.on_load)
+        video.on_load(SimpleNamespace())
+        self.assertEqual(
+            self.ctx.get_setting(timer_screen.GOAL_CELEBRATION_SETTING),
+            timer_screen.time_utils.today_str(),
+        )
 
     def test_celebration_transition_and_reset_helper_are_testable(self) -> None:
         today = "2026-07-16"

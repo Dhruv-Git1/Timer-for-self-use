@@ -18,14 +18,17 @@ from app.database.repositories.category_repo import CategoryRepository
 from app.database.repositories.daily_progress_repo import DailyProgressRepository
 from app.database.repositories.daily_reflection_repo import DailyReflectionRepository
 from app.database.repositories.entry_repo import EntryRepository
+from app.database.repositories.goal_repo import GoalRepository
 from app.database.repositories.settings_repo import SettingsRepository
 from app.services.backup_service import BackupService
 from app.services.calendar_service import CalendarService
+from app.services.csv_import_service import CsvImportService
 from app.services.category_service import CategoryService
 from app.services.dashboard_service import DashboardService
 from app.services.daily_progress_service import DailyProgressService
 from app.services.daily_reflection_service import DailyReflectionService
 from app.services.entry_service import EntryService
+from app.services.goal_service import GoalService
 from app.services.search_service import SearchService
 from app.services.stats_service import StatsService
 from app.services.streak_service import StreakService
@@ -46,6 +49,7 @@ class AppContext:
         self.daily_progress_repo = DailyProgressRepository(self.db)
         self.daily_reflection_repo = DailyReflectionRepository(self.db)
         self.entry_repo = EntryRepository(self.db)
+        self.goal_repo = GoalRepository(self.db)
         self.settings_repo = SettingsRepository(self.db)
 
         # Services (all business logic). Order matters where one depends on
@@ -54,6 +58,10 @@ class AppContext:
         self.streak_service = StreakService(self.category_repo, self.entry_repo)
         self.entry_service = EntryService(self.entry_repo, self.category_repo)
         self.timer_service = TimerService(self.settings_repo, self.entry_service)
+        # A completed countdown may have fired while Android kept the app
+        # process down. Reconcile before any screen reads summaries or builds a
+        # timer card; the operation is idempotent and is safe for legacy data.
+        self.timer_service.reconcile_expired()
 
         def active_timer_category_id() -> Optional[int]:
             state = self.timer_service.current_state()
@@ -64,6 +72,12 @@ class AppContext:
         )
         self.daily_progress_service = DailyProgressService(
             self.daily_progress_repo, self.category_repo, self.entry_repo
+        )
+        self.goal_service = GoalService(
+            self.goal_repo,
+            self.category_repo,
+            self.entry_repo,
+            self.daily_progress_repo,
         )
         self.daily_reflection_service = DailyReflectionService(self.daily_reflection_repo)
         self.dashboard_service = DashboardService(
@@ -80,10 +94,12 @@ class AppContext:
             self.daily_progress_service,
             self.daily_reflection_service,
             self.stats_service,
+            self.entry_repo,
         )
         # Built lazily (see the export_service property below) — it pulls in
         # pandas, which desktop has but a packaged mobile build may not.
         self._export_service = None
+        self.csv_import_service = CsvImportService(self.entry_repo, self.category_repo)
 
     @property
     def export_service(self):

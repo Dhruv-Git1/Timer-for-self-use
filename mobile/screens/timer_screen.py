@@ -22,12 +22,14 @@ import config
 from app.utils import time_utils, validators
 from mobile import theme
 from mobile.screens import categories_screen
-from mobile.widgets.fury import fury_button, fury_progress
+from app.services.timer_service import MODE_COUNTDOWN, MODE_STOPWATCH
+from mobile.widgets.fury import chip, fury_button, fury_progress
 from mobile.widgets.hero import COMPACT_HEIGHT, hero_banner
 from mobile.widgets.sheets import dismiss_sheet, form_sheet, show_sheet
 
 _PULSE_PERIOD = 2.6
 _TICK_INTERVAL = 0.2
+_FOCUS_CLOCK_SIZE = 104
 GOAL_CELEBRATION_SETTING = "last_goal_celebration_date"
 GOAL_COMPLETION_VIDEO = "goal-complete.mp4"
 GOAL_COMPLETION_CACHE_DIR = "timetracker-celebration"
@@ -128,9 +130,11 @@ def build(page: ft.Page, ctx) -> ft.Control:
         "id": state.category_id if state.is_active
         else (timer_categories[0].id if timer_categories else None)
     }
+    preferred_mode = {"value": ctx.timer_service.preferred_mode()}
     editing_goals = {"on": False}
     goal_inputs: dict[int, ft.TextField] = {}
     celebration_state = {"initialized": False, "was_complete": False}
+    focus_state: dict[str, object] = {"sheet": None, "clock": None, "open": False}
 
     clock_text = ft.Text(
         "0:00:00",
@@ -144,6 +148,8 @@ def build(page: ft.Page, ctx) -> ft.Control:
         "", size=13, color=theme.MUTED_TEXT, text_align=ft.TextAlign.CENTER
     )
     controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=10)
+    mode_selector = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=8)
+    duration_controls = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=6)
     clock_card = ft.Container(
         padding=22,
         border_radius=16,
@@ -152,7 +158,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
         content=ft.Column(
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=6,
-            controls=[clock_text, subtitle_text, controls_row],
+            controls=[clock_text, subtitle_text, mode_selector, duration_controls, controls_row],
         ),
     )
 
@@ -205,16 +211,126 @@ def build(page: ft.Page, ctx) -> ft.Control:
         ],
     )
 
+    def _focus_wakelock() -> ft.Wakelock | None:
+        """Attach one wake lock so a deliberate focus session stays visible."""
+        services = getattr(page, "services", None)
+        if services is None:
+            return None
+        wakelock = getattr(page, "_timetracker_focus_wakelock", None)
+        if wakelock is None:
+            wakelock = ft.Wakelock()
+            services.append(wakelock)
+            page._timetracker_focus_wakelock = wakelock
+        return wakelock
+
+    def _keep_focus_screen_awake(enabled: bool) -> None:
+        wakelock = _focus_wakelock()
+        if wakelock is not None:
+            page.run_task(wakelock.enable if enabled else wakelock.disable)
+
+    def _close_focus_mode(e=None) -> None:
+        """Return to the normal Timer view without changing the live session."""
+        sheet = focus_state.get("sheet")
+        focus_state["sheet"] = None
+        focus_state["clock"] = None
+        focus_state["open"] = False
+        _keep_focus_screen_awake(False)
+        if isinstance(sheet, ft.BottomSheet) and sheet.open:
+            dismiss_sheet(page, sheet)
+
+    def _show_focus_mode() -> None:
+        """Put the active session in a clock-only, distraction-free display."""
+        if focus_state["open"]:
+            return
+        live = ctx.timer_service.current_state()
+        if not live.is_active:
+            return
+        category = ctx.category_service.get(live.category_id)
+        shown_seconds = (
+            live.remaining_seconds if live.mode == MODE_COUNTDOWN else live.elapsed_seconds
+        )
+        focus_clock = ft.Text(
+            time_utils.fmt_clock(shown_seconds),
+            size=_FOCUS_CLOCK_SIZE,
+            weight=ft.FontWeight.BOLD,
+            font_family=theme.MONO_FAMILY_SEMIBOLD,
+            color=getattr(category, "color", theme.HEADLINE),
+            text_align=ft.TextAlign.CENTER,
+        )
+
+        def _on_dismiss(_event=None) -> None:
+            focus_state["sheet"] = None
+            focus_state["clock"] = None
+            focus_state["open"] = False
+            _keep_focus_screen_awake(False)
+
+        sheet = ft.BottomSheet(
+            bgcolor="#000000",
+            barrier_color="#000000",
+            dismissible=False,
+            draggable=False,
+            fullscreen=True,
+            use_safe_area=False,
+            maintain_bottom_view_insets_padding=False,
+            on_dismiss=_on_dismiss,
+            content=ft.Container(
+                expand=True,
+                bgcolor="#000000",
+                content=ft.Stack(
+                    fit=ft.StackFit.EXPAND,
+                    controls=[
+                        ft.Container(
+                            expand=True,
+                            alignment=ft.Alignment.CENTER,
+                            content=focus_clock,
+                        ),
+                        ft.Container(
+                            top=16,
+                            right=12,
+                            content=ft.IconButton(
+                                icon=ft.Icons.CLOSE,
+                                icon_color="#555861",
+                                icon_size=22,
+                                tooltip="Exit focus mode",
+                                on_click=_close_focus_mode,
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        )
+        focus_state["sheet"] = sheet
+        focus_state["clock"] = focus_clock
+        focus_state["open"] = True
+        _keep_focus_screen_awake(True)
+        show_sheet(page, sheet)
+
     async def _tick_loop() -> None:
         last_shown_second = None
         while True:
             await asyncio.sleep(_TICK_INTERVAL)
             live = ctx.timer_service.current_state()
+            if live.is_active and live.mode == MODE_COUNTDOWN and live.is_expired:
+                completion_token = live.token or ""
+                ok, _message, _entry_id = ctx.timer_service.reconcile_expired()
+                if ok and completion_token:
+                    bridge = getattr(page, "_timetracker_android_bridge", None)
+                    if bridge is not None:
+                        await bridge.notify_finished(completion_token)
+                _close_focus_mode()
+                _refresh_all()
+                break
             if not live.is_active:
                 break
-            if live.elapsed_seconds != last_shown_second:
-                clock_text.value = time_utils.fmt_clock(live.elapsed_seconds)
-                last_shown_second = live.elapsed_seconds
+            shown_seconds = (
+                live.remaining_seconds if live.mode == MODE_COUNTDOWN else live.elapsed_seconds
+            )
+            if shown_seconds != last_shown_second:
+                clock_text.value = time_utils.fmt_clock(shown_seconds)
+                focus_clock = focus_state.get("clock")
+                if isinstance(focus_clock, ft.Text):
+                    focus_clock.value = clock_text.value
+                last_shown_second = shown_seconds
             clock_card.shadow = _pulse_shadow(clock_text.color)
             page.update()
 
@@ -224,6 +340,8 @@ def build(page: ft.Page, ctx) -> ft.Control:
     def _on_category_tap(category_id: int) -> None:
         live = ctx.timer_service.current_state()
         if live.is_active:
+            if live.mode == MODE_COUNTDOWN:
+                return
             if category_id != live.category_id:
                 ctx.timer_service.start(category_id)
                 _refresh_all()
@@ -235,17 +353,111 @@ def build(page: ft.Page, ctx) -> ft.Control:
     def _on_start(e=None) -> None:
         if selected["id"] is None:
             return
-        ctx.timer_service.start(selected["id"])
+        mode = preferred_mode["value"]
+        try:
+            if mode == MODE_COUNTDOWN:
+                ctx.timer_service.start(
+                    selected["id"],
+                    mode=MODE_COUNTDOWN,
+                    duration_seconds=ctx.timer_service.last_countdown_seconds(),
+                )
+            else:
+                ctx.timer_service.start(selected["id"])
+        except ValueError:
+            return
+        if mode == MODE_COUNTDOWN:
+            bridge = getattr(page, "_timetracker_android_bridge", None)
+            if bridge is not None:
+                # Ask for notification access at the moment the user starts a
+                # countdown, never on app launch. Android's inexact-alarm
+                # fallback keeps the timer useful if this prompt is declined.
+                page.run_task(bridge.request_permissions)
         _refresh_all()
+        _show_focus_mode()
         _start_ticking()
 
     def _on_stop(e=None) -> None:
+        live = ctx.timer_service.current_state()
         ctx.timer_service.stop()
+        _close_focus_mode()
+        if live.is_expired and live.token:
+            bridge = getattr(page, "_timetracker_android_bridge", None)
+            if bridge is not None:
+                page.run_task(bridge.notify_finished, live.token)
         _refresh_all()
 
     def _on_discard(e=None) -> None:
         ctx.timer_service.discard()
+        _close_focus_mode()
         _refresh_all()
+
+    def _select_mode(mode: str) -> None:
+        if ctx.timer_service.current_state().is_active:
+            return
+        ctx.timer_service.set_preferred_mode(mode)
+        preferred_mode["value"] = mode
+        _refresh_all()
+
+    def _set_duration(minutes: int) -> None:
+        seconds = minutes * 60
+        ctx.timer_service.set_last_countdown_seconds(seconds)
+        _refresh_all()
+
+    def _open_custom_duration(e=None) -> None:
+        seconds = ctx.timer_service.last_countdown_seconds()
+        hours, minutes = divmod(seconds // 60, 60)
+        hours_field = ft.TextField(
+            label="Hours", value=str(hours), keyboard_type=ft.KeyboardType.NUMBER
+        )
+        minutes_field = ft.TextField(
+            label="Minutes", value=str(minutes), keyboard_type=ft.KeyboardType.NUMBER
+        )
+        error_text = ft.Text("", size=12, color=theme.STOP_RED)
+
+        def _cancel(_event=None) -> None:
+            dismiss_sheet(page, sheet)
+
+        def _save(_event=None) -> None:
+            hours_text = (hours_field.value or "").strip()
+            minutes_text = (minutes_field.value or "").strip()
+            if not hours_text.isdigit() or not minutes_text.isdigit():
+                error_text.value = "Hours and minutes must be whole numbers."
+            else:
+                custom_hours = int(hours_text)
+                custom_minutes = int(minutes_text)
+                total_minutes = custom_hours * 60 + custom_minutes
+                if not 0 <= custom_hours <= 23 or not 0 <= custom_minutes <= 59:
+                    error_text.value = "Hours must be 0–23 and minutes must be 0–59."
+                elif not 1 <= total_minutes <= 1439:
+                    error_text.value = "Choose a duration between 1 minute and 23h 59m."
+                else:
+                    _set_duration(total_minutes)
+                    _cancel()
+                    return
+            page.update()
+
+        sheet = form_sheet(
+            "Custom countdown",
+            ft.Column(
+                spacing=10,
+                controls=[
+                    ft.Text(
+                        "Set a whole-minute duration. The timer keeps running even "
+                        "when the app is in the background.",
+                        size=12,
+                        color=theme.MUTED_TEXT,
+                    ),
+                    ft.Row(controls=[hours_field, minutes_field]),
+                    error_text,
+                ],
+            ),
+            [
+                ft.TextButton("Cancel", on_click=_cancel),
+                fury_button("Save", kind="primary", on_click=_save),
+            ],
+            _cancel,
+        )
+        show_sheet(page, sheet)
 
     def _on_categories_changed() -> None:
         available = [
@@ -404,8 +616,10 @@ def build(page: ft.Page, ctx) -> ft.Control:
             item.completion_pct >= 100 for item in score.items
         )
 
-    def _show_goal_celebration() -> None:
+    def _show_goal_celebration(today: str) -> None:
         """Play the supplied celebration clip over the Timer screen once."""
+        playback_started = {"value": False}
+        playback_error = ft.Text("", size=12, color=theme.STOP_RED)
         video = ftv.Video(
             expand=True,
             autoplay=True,
@@ -434,7 +648,22 @@ def build(page: ft.Page, ctx) -> ft.Control:
             if is_video_completion_event(event):
                 _dismiss(event)
 
+        def _on_video_load(event) -> None:
+            # Do not consume today's one celebration until the native player has
+            # actually initialized. Previously the latch was written before the
+            # player was visible, so a transient Android player failure resulted
+            # in a silent, non-retryable celebration.
+            if not playback_started["value"]:
+                playback_started["value"] = True
+                ctx.set_setting(GOAL_CELEBRATION_SETTING, today)
+
+        def _on_video_error(event) -> None:
+            playback_error.value = "The celebration video could not start. Your goal is still complete."
+            page.update()
+
         video.on_complete = _on_video_complete
+        video.on_load = _on_video_load
+        video.on_error = _on_video_error
         sheet = ft.BottomSheet(
             bgcolor="#000000",
             dismissible=False,
@@ -477,6 +706,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
                                                 size=12,
                                                 color=theme.HEADLINE,
                                             ),
+                                            playback_error,
                                         ],
                                     ),
                                     fury_button(
@@ -494,17 +724,23 @@ def build(page: ft.Page, ctx) -> ft.Control:
     def _maybe_show_goal_celebration() -> None:
         today = time_utils.today_str()
         is_complete = _all_daily_goals_complete()
+        last_celebration_date = ctx.get_setting(GOAL_CELEBRATION_SETTING)
         if not celebration_state["initialized"]:
             celebration_state["initialized"] = True
+            # Completion can happen from another screen or while Android has
+            # the app in the background. In that case this Timer view sees an
+            # already-complete day on its first refresh; celebrate it once
+            # instead of silently treating it as stale state.
+            if is_complete and last_celebration_date != today:
+                _show_goal_celebration(today)
         elif should_show_goal_celebration(
             initialized=celebration_state["initialized"],
             was_complete=celebration_state["was_complete"],
             is_complete=is_complete,
-            last_celebration_date=ctx.get_setting(GOAL_CELEBRATION_SETTING),
+            last_celebration_date=last_celebration_date,
             today=today,
         ):
-            ctx.set_setting(GOAL_CELEBRATION_SETTING, today)
-            _show_goal_celebration()
+            _show_goal_celebration(today)
         celebration_state["was_complete"] = is_complete
 
     def _refresh_score_and_checkins() -> None:
@@ -670,6 +906,11 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 grid_column.controls.append(row)
             is_tracking = live.is_active and live.category_id == category.id
             is_selected = not live.is_active and selected["id"] == category.id
+            is_locked = (
+                live.is_active
+                and live.mode == MODE_COUNTDOWN
+                and category.id != live.category_id
+            )
             border_color = (
                 category.color if is_selected
                 else ("#FFFFFF" if is_tracking else theme.CARD_BORDER)
@@ -684,6 +925,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
                         2 if (is_selected or is_tracking) else 1, border_color
                     ),
                     animate=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
+                    opacity=0.42 if is_locked else 1.0,
                     content=ft.Row(
                         spacing=6,
                         controls=[
@@ -703,7 +945,10 @@ def build(page: ft.Page, ctx) -> ft.Control:
                             ),
                         ],
                     ),
-                    on_click=lambda e, cid=category.id: _on_category_tap(cid),
+                    on_click=(
+                        None if is_locked
+                        else lambda e, cid=category.id: _on_category_tap(cid)
+                    ),
                 )
             )
 
@@ -717,24 +962,71 @@ def build(page: ft.Page, ctx) -> ft.Control:
         if not live.is_active and selected["id"] not in categories:
             selected["id"] = next(iter(categories), None)
 
+        active_mode = live.mode if live.is_active else preferred_mode["value"]
         if live.is_active and live.category_id in categories:
             category = categories[live.category_id]
-            clock_text.value = time_utils.fmt_clock(live.elapsed_seconds)
+            shown_seconds = (
+                live.remaining_seconds if live.mode == MODE_COUNTDOWN else live.elapsed_seconds
+            )
+            clock_text.value = time_utils.fmt_clock(shown_seconds)
             clock_text.color = category.color
-            subtitle_text.value = f"TRACKING: {category.name.upper()}"
+            subtitle_text.value = (
+                f"{'COUNTDOWN' if live.mode == MODE_COUNTDOWN else 'STOPWATCH'}: "
+                f"{category.name.upper()}"
+            )
             subtitle_text.color = category.color
             clock_card.shadow = _pulse_shadow(category.color)
         else:
-            clock_text.value = time_utils.fmt_clock(0)
+            idle_seconds = (
+                ctx.timer_service.last_countdown_seconds()
+                if active_mode == MODE_COUNTDOWN else 0
+            )
+            clock_text.value = time_utils.fmt_clock(idle_seconds)
             clock_text.color = theme.HEADLINE
             clock_card.shadow = None
             if selected["id"] in categories:
                 category = categories[selected["id"]]
-                subtitle_text.value = f"Ready to start: {category.name}"
+                subtitle_text.value = (
+                    f"Ready for {'a countdown' if active_mode == MODE_COUNTDOWN else 'a stopwatch'}: "
+                    f"{category.name}"
+                )
                 subtitle_text.color = category.color
             else:
                 subtitle_text.value = "Add a Timer category, then press Start"
                 subtitle_text.color = theme.MUTED_TEXT
+
+        mode_selector.controls = [
+            ft.Container(
+                padding=ft.Padding.symmetric(vertical=8, horizontal=14),
+                border_radius=8,
+                bgcolor=theme.ACCENT if active_mode == MODE_STOPWATCH else theme.NEUTRAL_BTN,
+                opacity=0.55 if live.is_active else 1.0,
+                ink=not live.is_active,
+                content=theme.tracked("STOPWATCH", size=11, color=theme.HEADLINE,
+                                     family=theme.MONO_FAMILY_SEMIBOLD, spacing=0.5),
+                on_click=(None if live.is_active else lambda e: _select_mode(MODE_STOPWATCH)),
+            ),
+            ft.Container(
+                padding=ft.Padding.symmetric(vertical=8, horizontal=14),
+                border_radius=8,
+                bgcolor=theme.ACCENT if active_mode == MODE_COUNTDOWN else theme.NEUTRAL_BTN,
+                opacity=0.55 if live.is_active else 1.0,
+                ink=not live.is_active,
+                content=theme.tracked("COUNTDOWN", size=11, color=theme.HEADLINE,
+                                     family=theme.MONO_FAMILY_SEMIBOLD, spacing=0.5),
+                on_click=(None if live.is_active else lambda e: _select_mode(MODE_COUNTDOWN)),
+            ),
+        ]
+        duration_controls.controls.clear()
+        if not live.is_active and active_mode == MODE_COUNTDOWN:
+            current_minutes = ctx.timer_service.last_countdown_seconds() // 60
+            for label, minutes in (("25m", 25), ("1h", 60), ("2h", 120)):
+                duration_controls.controls.append(
+                    chip(label, current_minutes == minutes, lambda e, m=minutes: _set_duration(m))
+                )
+            duration_controls.controls.append(
+                chip("Custom", current_minutes not in {25, 60, 120}, _open_custom_duration)
+            )
 
         controls_row.controls.clear()
         if live.is_active:
@@ -745,7 +1037,7 @@ def build(page: ft.Page, ctx) -> ft.Control:
         else:
             controls_row.controls.append(
                 fury_button(
-                    "Start",
+                    "Start countdown" if active_mode == MODE_COUNTDOWN else "Start",
                     icon=ft.Icons.PLAY_ARROW,
                     kind="primary",
                     on_click=_on_start,
@@ -773,8 +1065,8 @@ def build(page: ft.Page, ctx) -> ft.Control:
                 kicker="Timer / Live Session",
                 headline="REVENGE",
                 height=COMPACT_HEIGHT,
-                # Nudge the cover crop down so the hero shows the character's
-                # shoulders/chest as well as the face.
+                # Keep the character's shoulders in frame rather than cropping
+                # the hero down to a pale text-only header.
                 image_align=ft.Alignment(0, 0.34),
             ),
             clock_card,

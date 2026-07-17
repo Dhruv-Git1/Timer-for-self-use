@@ -96,6 +96,83 @@ CREATE TABLE IF NOT EXISTS daily_progress (
 CREATE INDEX IF NOT EXISTS idx_daily_progress_date ON daily_progress(log_date);
 
 -- --------------------------------------------------------------------------
+-- Goals: longer-horizon targets linked to one tracked category.  A goal can
+-- repeat weekly, in 14-day cycles, monthly, live in a custom date window, or
+-- accumulate from a chosen start date with no deadline.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS goals (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    title         TEXT    NOT NULL,
+    category_id   INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+    target_value  INTEGER NOT NULL CHECK (target_value >= 1),
+    period        TEXT    NOT NULL
+                          CHECK (period IN ('weekly', 'biweekly', 'monthly',
+                                            'custom', 'timeless')),
+    start_date    TEXT    NOT NULL,
+    end_date      TEXT,
+    -- A custom range leaves these NULL. A repeating custom goal stores both.
+    interval_count INTEGER CHECK (interval_count IS NULL OR interval_count >= 1),
+    interval_unit  TEXT CHECK (
+        interval_unit IS NULL OR interval_unit IN ('days', 'weeks', 'months')
+    ),
+    is_archived   INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    CHECK (end_date IS NULL OR end_date >= start_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_goals_category ON goals(category_id);
+CREATE INDEX IF NOT EXISTS idx_goals_active ON goals(is_archived, start_date);
+
+-- --------------------------------------------------------------------------
+-- Goal tasks: independent one-off checkboxes with optional local deadlines.
+-- Completed rows stay available as history; the service hides older completed
+-- tasks from the active list without destroying them.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS goal_tasks (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    title                   TEXT    NOT NULL,
+    due_at                  TEXT,
+    reminder_offset_minutes INTEGER CHECK (
+        reminder_offset_minutes IS NULL OR reminder_offset_minutes >= 0
+    ),
+    completed_at            TEXT,
+    created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at              TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_goal_tasks_due ON goal_tasks(completed_at, due_at);
+
+-- --------------------------------------------------------------------------
+-- Goal routines: independent scheduled checkboxes. Category is optional and
+-- used only for organization/color; deleting it moves the routine to Personal.
+-- Bit 0 of weekdays_mask is Monday and bit 6 is Sunday.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS goal_routines (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    title         TEXT    NOT NULL,
+    category_id   INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    weekdays_mask INTEGER NOT NULL CHECK (weekdays_mask BETWEEN 1 AND 127),
+    start_date    TEXT    NOT NULL,
+    is_archived   INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_goal_routines_active
+    ON goal_routines(is_archived, start_date);
+
+CREATE TABLE IF NOT EXISTS goal_routine_checkins (
+    routine_id   INTEGER NOT NULL REFERENCES goal_routines(id) ON DELETE CASCADE,
+    log_date     TEXT    NOT NULL,
+    completed_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (routine_id, log_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_goal_routine_checkins_date
+    ON goal_routine_checkins(log_date);
+
+-- --------------------------------------------------------------------------
 -- Daily reflections: the user's own explanation of what helped or hindered
 -- productivity. This is intentionally separate from time-entry notes so one
 -- reflection represents the whole day and remains easy to edit later.

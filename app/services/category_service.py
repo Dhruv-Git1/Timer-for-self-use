@@ -179,13 +179,14 @@ class CategoryService:
                 return (False, "This category no longer exists.", None)
             entry_count = self.repo.count_entries(category_id)
             progress_count = self.repo.count_progress_rows(category_id)
+            goal_count = self.repo.count_goals(category_id)
         except sqlite3.DatabaseError:
             return (
                 False,
                 "Couldn't check whether this category can be deleted. Please try again.",
                 None,
             )
-        if entry_count > 0 or progress_count > 0:
+        if entry_count > 0 or progress_count > 0 or goal_count > 0:
             parts = []
             if entry_count:
                 parts.append(f"{entry_count} time entr{'y' if entry_count == 1 else 'ies'}")
@@ -193,6 +194,8 @@ class CategoryService:
                 parts.append(
                     f"{progress_count} progress day{'s' if progress_count != 1 else ''}"
                 )
+            if goal_count:
+                parts.append(f"{goal_count} goal{'s' if goal_count != 1 else ''}")
             return (
                 False,
                 f"This category has {' and '.join(parts)}. "

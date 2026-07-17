@@ -55,6 +55,14 @@ class CategoryRepository(BaseRepository):
         ).fetchone()
         return row["n"]
 
+    def count_goals(self, category_id: int) -> int:
+        """How many long-horizon goals are linked to this category."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM goals WHERE category_id = ?",
+            (category_id,),
+        ).fetchone()
+        return row["n"]
+
     def has_history(self, category_id: int) -> bool:
         """Whether changing this category's tracking mode would reinterpret data."""
         return self.count_entries(category_id) > 0 or self.count_progress_rows(category_id) > 0
@@ -74,6 +82,8 @@ class CategoryRepository(BaseRepository):
         unit_label: str = "times",
         include_in_daily_score: bool = True,
         score_weight: int = 1,
+        *,
+        commit: bool = True,
     ) -> int:
         """Insert a new category and return its new id."""
         cur = self.conn.execute(
@@ -88,7 +98,8 @@ class CategoryRepository(BaseRepository):
              daily_target_minutes, sort_order, tracking_mode, daily_target_count,
              unit_label.strip(), 1 if include_in_daily_score else 0, score_weight),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return cur.lastrowid
 
     def update(self, category: Category) -> None:

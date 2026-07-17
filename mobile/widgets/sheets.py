@@ -17,6 +17,7 @@ def form_sheet(
     *,
     body_height: float | None = None,
     leading_actions: Sequence[ft.Control] = (),
+    on_dismiss: Callable | None = None,
 ) -> ft.BottomSheet:
     """Create a scroll-friendly form sheet with a persistent action row.
 
@@ -33,6 +34,7 @@ def form_sheet(
         draggable=True,
         show_drag_handle=True,
         scrollable=True,
+        on_dismiss=on_dismiss,
         content=ft.Container(
             padding=ft.Padding.only(left=20, top=4, right=20, bottom=20),
             content=ft.Column(
@@ -67,11 +69,15 @@ def form_sheet(
 
 
 def show_sheet(page: ft.Page, sheet: ft.BottomSheet) -> None:
-    page.overlay.append(sheet)
-    sheet.open = True
-    page.update()
+    """Show a managed modal sheet using Flet's dialog stack.
+
+    BottomSheet inherits DialogControl. Keeping it out of ``page.overlay`` is
+    important: managed dialogs remove their modal barrier after Flutter's
+    dismissal animation, including when an AlertDialog was stacked above it.
+    """
+    page.show_dialog(sheet)
 
 
 def dismiss_sheet(page: ft.Page, sheet: ft.BottomSheet) -> None:
-    sheet.open = False
-    page.update()
+    if sheet.open:
+        page.pop_dialog()

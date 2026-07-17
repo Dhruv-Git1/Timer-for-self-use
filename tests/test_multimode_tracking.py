@@ -7,6 +7,7 @@ import sqlite3
 import tempfile
 import unittest
 
+import config
 from app.database.connection import DatabaseManager
 from app.models.category import TRACKING_COUNTER
 from app.services.context import AppContext
@@ -68,14 +69,18 @@ class MigrationTests(unittest.TestCase):
             reflections = db.conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='daily_reflections'"
             ).fetchone()
+            goals = db.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='goals'"
+            ).fetchone()
 
             self.assertEqual(row["daily_target_minutes"], 90)
             self.assertEqual(row["tracking_mode"], "timer")
             self.assertEqual(row["daily_target_count"], 1)
             self.assertEqual(row["include_in_daily_score"], 1)
-            self.assertEqual(version, "3")
+            self.assertEqual(version, config.SCHEMA_VERSION)
             self.assertIsNotNone(table)
             self.assertIsNotNone(reflections)
+            self.assertIsNotNone(goals)
             db.close()
 
 

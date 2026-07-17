@@ -65,7 +65,9 @@ def line_chart(series: Series, color: str = theme.ACCENT, height: int = 220,
     Curved with a faint gradient fade beneath the primary line (restrained —
     a premium-dashboard touch, not a saturated glow) — the mobile equivalent
     of a matplotlib fill_between with low alpha."""
-    if series.is_empty:
+    extra_lines = extra_lines or []
+    has_extra_data = any(values and any(value != 0 for value in values) for values, _ in extra_lines)
+    if not series.values or (series.is_empty and not has_extra_data):
         return _empty()
 
     data_series = [fc.LineChartData(
@@ -77,7 +79,7 @@ def line_chart(series: Series, color: str = theme.ACCENT, height: int = 220,
         ),
     )]
     all_values = list(series.values)
-    for values, extra_color in (extra_lines or []):
+    for values, extra_color in extra_lines:
         data_series.append(fc.LineChartData(
             points=[fc.LineChartDataPoint(x=i, y=v) for i, v in enumerate(values)],
             color=extra_color, stroke_width=2, curved=True,

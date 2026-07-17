@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from app.database.repositories.base_repo import BaseRepository
 from app.models.time_entry import TimeEntry
@@ -71,6 +71,44 @@ class EntryRepository(BaseRepository):
             return None
         return (row["lo"], row["hi"])
 
+    def daily_time_aggregates(self) -> list[dict[str, Any]]:
+        """Return one compact row per active day across the full history.
+
+        AI Coach uses this instead of loading every session object. The amount
+        of Python data therefore grows with active days, not with individual
+        timer entries.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT e.log_date AS date,
+                   SUM(CASE WHEN c.is_productive = 1
+                            THEN e.duration_minutes ELSE 0 END)
+                       AS productive_minutes,
+                   SUM(e.duration_minutes) AS recorded_minutes,
+                   COUNT(*) AS sessions
+              FROM time_entries e
+              JOIN categories c ON c.id = e.category_id
+             GROUP BY e.log_date
+             ORDER BY e.log_date
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def category_time_aggregates(self) -> list[dict[str, Any]]:
+        """Return all-time totals grouped by category, largest first."""
+        rows = self.conn.execute(
+            """
+            SELECT c.name AS category,
+                   SUM(e.duration_minutes) AS minutes,
+                   COUNT(*) AS sessions
+              FROM time_entries e
+              JOIN categories c ON c.id = e.category_id
+             GROUP BY c.id, c.name
+             ORDER BY minutes DESC, c.name
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def search(
         self,
         keyword: str = "",
@@ -114,6 +152,8 @@ class EntryRepository(BaseRepository):
         duration_minutes: int,
         crosses_midnight: bool,
         notes: str,
+        *,
+        commit: bool = True,
     ) -> int:
         """Insert a new entry and return its new id."""
         cur = self.conn.execute(
@@ -126,7 +166,8 @@ class EntryRepository(BaseRepository):
             (category_id, log_date, start_ts, end_ts,
              duration_minutes, 1 if crosses_midnight else 0, notes),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return cur.lastrowid
 
     def update(

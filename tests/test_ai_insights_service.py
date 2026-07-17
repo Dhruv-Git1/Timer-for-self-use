@@ -34,6 +34,59 @@ class AiInsightsServiceTests(unittest.TestCase):
             finally:
                 ctx.close()
 
+    def test_all_history_report_reads_database_and_stays_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            ctx = AppContext(os.path.join(folder, "test.db"))
+            try:
+                categories = {c.name: c for c in ctx.category_service.list_categories()}
+                study = categories["Study"]
+                ok, message, sleep_id = ctx.category_service.create(
+                    "Sleep", "#64748B", False, 0
+                )
+                self.assertTrue(ok, message)
+                self.assertIsNotNone(sleep_id)
+                today = time_utils.today_str()
+
+                entries = (
+                    (study.id, "2024-01-02", "09:00", "10:00"),
+                    (sleep_id, "2024-01-02", "22:00", "06:00"),
+                    (study.id, today, "14:00", "14:30"),
+                )
+                for category_id, log_date, start, end in entries:
+                    ok, message, _ = ctx.entry_service.add_entry(
+                        category_id, log_date, start, end
+                    )
+                    self.assertTrue(ok, message)
+
+                for offset in range(65):
+                    ctx.daily_reflection_service.save(
+                        time_utils.add_days(today, -offset),
+                        f"Reflection {offset}: slept well and started early. " + "x" * 600,
+                    )
+
+                report = ctx.ai_insights_service.all_history_report()
+
+                self.assertEqual(report["source"], "local_database_all_history")
+                self.assertEqual(report["data_coverage"]["first_date"], "2024-01-02")
+                self.assertEqual(report["data_coverage"]["last_date"], today)
+                self.assertEqual(report["data_coverage"]["sessions"], 3)
+                self.assertEqual(report["all_time_summary"]["recorded_minutes"], 570)
+                self.assertEqual(report["all_time_summary"]["productive_minutes"], 90)
+                self.assertEqual(len(report["recent_daily"]), 2)
+                self.assertLessEqual(len(report["recent_monthly"]), 36)
+                self.assertEqual(len(report["daily_reflections"]), 60)
+                self.assertTrue(
+                    all(len(item["note"]) <= 500 for item in report["daily_reflections"])
+                )
+                category_minutes = {
+                    item["category"]: item["minutes"]
+                    for item in report["top_categories"]
+                }
+                self.assertEqual(category_minutes["Study"], 90)
+                self.assertEqual(category_minutes["Sleep"], 480)
+            finally:
+                ctx.close()
+
 
 if __name__ == "__main__":
     unittest.main()

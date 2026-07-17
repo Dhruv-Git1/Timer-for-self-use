@@ -50,15 +50,18 @@ class ExportServiceTests(unittest.TestCase):
             )
             self.assertEqual(list(reader), [])
 
-    def test_settings_attaches_one_export_file_picker_service(self) -> None:
+    def test_settings_attaches_one_export_and_one_import_picker_service(self) -> None:
         page = SimpleNamespace(services=[], update=lambda: None)
 
         settings_screen.build(page, self.ctx)
         settings_screen.build(page, self.ctx)
 
         pickers = [service for service in page.services if isinstance(service, ft.FilePicker)]
-        self.assertEqual(len(pickers), 1)
-        self.assertEqual(pickers[0].data, "timetracker-export-picker")
+        self.assertEqual(len(pickers), 2)
+        self.assertEqual(
+            {picker.data for picker in pickers},
+            {"timetracker-export-picker", "timetracker-import-picker"},
+        )
 
         def walk(control):
             yield control
@@ -73,4 +76,4 @@ class ExportServiceTests(unittest.TestCase):
             for control in walk(settings_screen.build(page, self.ctx))
             if inspect.iscoroutinefunction(getattr(control, "on_click", None))
         ]
-        self.assertEqual(len(export_buttons), 2)
+        self.assertEqual(len(export_buttons), 3)

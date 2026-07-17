@@ -1,8 +1,10 @@
 [project]
 name = "timetracker-mobile"
-version = "0.1.7"
+version = "0.1.12"
 description = "Personal Time Tracker & Productivity Dashboard — Android (Flet)"
-requires-python = ">=3.10"
+# Android builds currently require Python 3.13 or earlier: Flet's 3.14
+# embedded runtime does not bundle ctypes, which this app needs at startup.
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "flet==0.86.0",
     "flet-charts==0.86.0",
@@ -13,7 +15,7 @@ dependencies = [
 product = "Time Tracker"
 org = "com.timetracker"
 bundle_id = "com.timetracker.app"
-build_number = 8
+build_number = 13
 
 [tool.flet.app]
 module = "mobile_build_entry"
@@ -22,15 +24,49 @@ module = "mobile_build_entry"
 # unchanged). These are excluded so the APK never bundles your personal data,
 # the desktop-only code, or local build/test cruft.
 exclude = [
-    "build", "TimeTracker.apk",
+    "build", "TimeTracker.apk", "flet_build_template",
     "data", "backups", "exports", "tests",
     ".git", ".github", "__pycache__",
+    # These are build-time or desktop-only assets. Keeping them out of the
+    # embedded Python app avoids a very slow Android cold start.
+    "extensions", ".claude", "CLAUDE.md",
+    "Gemini_Generated_Image_za69z2za69z2za69.png", "video.mp4",
     "flet_build.log", "flet_build2.log", "flet_stdout.log", "flet_stderr.log",
     # mobile/.flet is Flet's own local dev-storage dir (created by desktop
     # `flet run` sessions) — it can hold a mirrored copy of the real database
     # and export files, so it must never end up in a built package.
-    "mobile/.flet", ".flet",
+    "mobile/.flet", 'mobile\.flet', ".flet",
 ]
+
+# Flet 0.86.0's stock template omits registration for Dart-only Android
+# plugins. Use the project-local copy so release builds initialize the
+# packaged Python runtime instead of remaining at the boot screen.
+[tool.flet.template]
+url = "flet_build_template/build"
+
+# Keep embedded-Python startup visible on Android. Flet's default boot surface
+# is intentionally empty, which otherwise appears indistinguishable from a
+# blank app while the packaged runtime unpacks or starts.
+[tool.flet.boot_screen]
+name = "flet"
+
+[tool.flet.boot_screen.flet]
+theme_mode = "dark"
+bgcolor_dark = "#141218"
+bgcolor_light = "#FFF8F7"
+spinner_color_dark = "#FFB4AB"
+spinner_color_light = "#B42724"
+text_color_dark = "#E8E0DE"
+text_color_light = "#201A19"
+spinner_size = 30
+prepare_message = "Preparing your tracker…"
+startup_message = "Starting your tracker…"
 
 [tool.flet.android]
 min_sdk_version = 24
+dependencies = ["timetracker-android-widget"]
+dev_packages = { timetracker-android-widget = "extensions/timetracker_android_widget" }
+
+[tool.flet.android.deep_linking]
+scheme = "timetracker"
+host = "timer"

@@ -122,6 +122,24 @@ class DatabaseManager:
                     f"ALTER TABLE categories ADD COLUMN {name} {definition}"
                 )
 
+        # Schema v6 adds custom repeating cycles to the existing goal table.
+        # Keeping the original period CHECK and representing both custom ranges
+        # and custom intervals as period='custom' avoids rebuilding user data.
+        goal_columns = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(goals)").fetchall()
+        }
+        goal_additions = {
+            "interval_count": "INTEGER CHECK (interval_count IS NULL OR interval_count >= 1)",
+            "interval_unit": (
+                "TEXT CHECK (interval_unit IS NULL OR "
+                "interval_unit IN ('days', 'weeks', 'months'))"
+            ),
+        }
+        for name, definition in goal_additions.items():
+            if name not in goal_columns:
+                self.conn.execute(f"ALTER TABLE goals ADD COLUMN {name} {definition}")
+
         self.conn.execute(
             "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?)",
             (config.SCHEMA_VERSION,),

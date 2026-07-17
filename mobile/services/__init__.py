@@ -1,0 +1,2 @@
+"""Mobile-only service adapters."""
+

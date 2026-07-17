@@ -116,4 +116,4 @@ DEFAULT_CATEGORIES = [
 
 # Default value stored in app_meta the first time the app starts.
 DEFAULT_THEME = "dark"          # "dark", "light", or "system"
-SCHEMA_VERSION = "3"            # bumped when the schema changes, for migrations
+SCHEMA_VERSION = "6"            # bumped when the schema changes, for migrations

@@ -1,0 +1,7 @@
+pyproject.toml
+setup.py
+src/timetracker_android_widget/__init__.py
+src/timetracker_android_widget.egg-info/PKG-INFO
+src/timetracker_android_widget.egg-info/SOURCES.txt
+src/timetracker_android_widget.egg-info/dependency_links.txt
+src/timetracker_android_widget.egg-info/top_level.txt
